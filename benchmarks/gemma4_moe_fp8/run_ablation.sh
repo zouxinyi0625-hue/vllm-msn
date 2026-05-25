@@ -86,11 +86,11 @@ set_env_for_exp() {
   # Only enable for experiments that use FP8 weights (E002–E015 except E001, E015, E014 where
   # we still probe the compute cap but leave at 0 for safety on A100).
   case "$exp" in
-    E001|E014|E015)
+    E001|E003|E014|E015)
       # BF16 weights — FlashInfer FP8 MoE is irrelevant; keep 0
       export VLLM_USE_FLASHINFER_MOE_FP8="0"
       ;;
-    E002|E003|E004|E005|E006|E007|E008|E009|E010|E011|E012|E013)
+    E002|E004|E005|E006|E007|E008|E009|E010|E011|E012|E013)
       # FP8 weights: enable FlashInfer FP8 MoE on H100, keep off on A100
       COMPUTE_CAP=$(python3 -c "import torch; cc=torch.cuda.get_device_capability(); print(cc[0]*10+cc[1])" 2>/dev/null || echo "0")
       if [[ "$COMPUTE_CAP" -ge 90 ]]; then

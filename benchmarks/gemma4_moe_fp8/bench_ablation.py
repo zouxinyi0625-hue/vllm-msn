@@ -150,15 +150,13 @@ EXPERIMENTS: dict[str, dict] = {
         model_variant="full",
     ),
     # ------------------------------------------------------------------
-    # E003 — +FP8 KV cache on top of FP8 weights
-    #         REPRODUCE_PRODSHAPE uses --kv-cache-dtype fp8 on H100.
-    #         On A100 (sm_80) this is expected to FAIL — that IS the result.
+    # E003 — BF16 + CUDA graphs (isolates CUDA graph contribution on BF16)
     # ------------------------------------------------------------------
     "E003": dict(
-        label="+FP8 KV cache (fp8_e4m3) — FAIL expected on A100",
-        quantization="fp8",
-        kv_cache_dtype="fp8_e4m3",
-        enforce_eager=True,
+        label="BF16 + CUDA graphs (enforce_eager=False)",
+        quantization=None,
+        kv_cache_dtype="auto",
+        enforce_eager=False,
         mtp=False,   mtp_k=0,
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
