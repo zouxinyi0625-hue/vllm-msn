@@ -22,9 +22,9 @@ cd "$(dirname "$0")"
 # ---------------------------------------------------------------------------
 # Default model paths (override via env)
 # ---------------------------------------------------------------------------
-: "${GEMMA4_MODEL_PATH:=/nvmedata/hf_checkpoints/gemma-4-26B-A4B-it}"
+: "${GEMMA4_MODEL_PATH:=google/gemma-4-26B-A4B-it}"
 : "${GEMMA4_TEXT_ONLY_MODEL_PATH:=${GEMMA4_MODEL_PATH}-text-only}"
-: "${GEMMA4_ASSISTANT_MODEL_PATH:=/nvmedata/hf_checkpoints/gemma-4-26B-A4B-it-assistant}"
+: "${GEMMA4_ASSISTANT_MODEL_PATH:=google/gemma-4-26B-A4B-it-assistant}"
 export GEMMA4_MODEL_PATH GEMMA4_TEXT_ONLY_MODEL_PATH GEMMA4_ASSISTANT_MODEL_PATH
 
 # ---------------------------------------------------------------------------

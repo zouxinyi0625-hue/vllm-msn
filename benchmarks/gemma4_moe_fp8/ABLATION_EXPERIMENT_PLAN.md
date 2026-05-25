@@ -47,7 +47,7 @@ from transformers import AutoTokenizer
 
 src  = "/nvmedata/data/layer1_delta_20260501.txt"
 dst  = "datasets/sc1_delta_v2.jsonl"
-model = "/nvmedata/hf_checkpoints/gemma-4-26B-A4B-it"
+model = "google/gemma-4-26B-A4B-it"
 max_tokens = 16384   # max_model_len(24576) - output_len(8192)
 max_keep   = 1000
 
@@ -244,9 +244,9 @@ python3 analyze_ablation.py
 
 | Variable | Default | Used by |
 |---|---|---|
-| `GEMMA4_MODEL_PATH` | `/nvmedata/hf_checkpoints/gemma-4-26B-A4B-it` | E001–E005 (full model) |
+| `GEMMA4_MODEL_PATH` | `google/gemma-4-26B-A4B-it` | E001–E005 (full model) |
 | `GEMMA4_TEXT_ONLY_MODEL_PATH` | `$GEMMA4_MODEL_PATH-text-only` | E006–E015 (vision tower stripped) |
-| `GEMMA4_ASSISTANT_MODEL_PATH` | `/nvmedata/hf_checkpoints/gemma-4-26B-A4B-it-assistant` | All MTP experiments (E005–E011, E013, E014) |
+| `GEMMA4_ASSISTANT_MODEL_PATH` | `google/gemma-4-26B-A4B-it-assistant` | All MTP experiments (E005–E011, E013, E014) |
 
 Override before running:
 ```bash

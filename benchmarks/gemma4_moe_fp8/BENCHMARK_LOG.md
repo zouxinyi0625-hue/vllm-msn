@@ -548,9 +548,9 @@ cd benchmarks/gemma4_moe_fp8
 chmod +x run_ablation.sh
 
 # Export model paths (adjust to your mount points):
-export GEMMA4_MODEL_PATH=/mnt/models/gemma-4-26B-A4B-it
-export GEMMA4_TEXT_ONLY_MODEL_PATH=/mnt/models/gemma-4-26B-A4B-it-text-only
-export GEMMA4_ASSISTANT_MODEL_PATH=/mnt/models/gemma-4-26B-A4B-it-assistant
+export GEMMA4_MODEL_PATH=google/gemma-4-26B-A4B-it
+export GEMMA4_TEXT_ONLY_MODEL_PATH=google/gemma-4-26B-A4B-it-text-only
+export GEMMA4_ASSISTANT_MODEL_PATH=google/gemma-4-26B-A4B-it-assistant
 
 # Run all 15 experiments on sc1 (≈ 4–6 h on H100 NVL):
 ./run_ablation.sh --all --scenario sc1 --reps 2
