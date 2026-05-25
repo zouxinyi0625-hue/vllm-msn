@@ -324,6 +324,9 @@ def run_experiment(
     if exp_cfg["quantization"]:
         engine_kwargs["quantization"] = exp_cfg["quantization"]
 
+    # Max running requests (equivalent to vLLM max_num_seqs)
+    engine_kwargs["max_running_requests"] = exp_cfg["max_num_seqs"]
+
     # CUDA graphs control
     # SGLang default: CUDA graphs enabled.
     # Use disable_cuda_graph=True to disable (equivalent to vLLM enforce_eager=True).
