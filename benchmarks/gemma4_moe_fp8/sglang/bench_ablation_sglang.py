@@ -325,10 +325,10 @@ def run_experiment(
         engine_kwargs["quantization"] = exp_cfg["quantization"]
 
     # CUDA graphs control
+    # SGLang default: CUDA graphs enabled.
+    # Use disable_cuda_graph=True to disable (equivalent to vLLM enforce_eager=True).
     if not exp_cfg["cuda_graphs"]:
-        engine_kwargs["cuda_graph_max_bs"] = 0  # disable CUDA graphs
-    else:
-        engine_kwargs["cuda_graph_max_bs"] = 256  # enable with max bs
+        engine_kwargs["disable_cuda_graph"] = True
 
     # Speculative decoding (EAGLE3 for Gemma 4)
     if exp_cfg["speculative"]:
