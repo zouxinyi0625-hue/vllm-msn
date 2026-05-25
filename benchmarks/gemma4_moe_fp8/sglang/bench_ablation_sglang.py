@@ -318,6 +318,7 @@ def run_experiment(
         trust_remote_code=True,
         context_length=sc_cfg["max_model_len"],
         mem_fraction_static=exp_cfg["gpu_memory_utilization"],
+        enable_torch_compile=True,
     )
 
     # Quantization
@@ -327,19 +328,22 @@ def run_experiment(
     # Max running requests (equivalent to vLLM max_num_seqs)
     engine_kwargs["max_running_requests"] = exp_cfg["max_num_seqs"]
 
+    # Chunked prefill size (equivalent to vLLM max_num_batched_tokens)
+    engine_kwargs["chunked_prefill_size"] = sc_cfg["max_num_batched_tokens"]
+
     # CUDA graphs control
     # SGLang default: CUDA graphs enabled.
     # Use disable_cuda_graph=True to disable (equivalent to vLLM enforce_eager=True).
     if not exp_cfg["cuda_graphs"]:
         engine_kwargs["disable_cuda_graph"] = True
 
-    # Speculative decoding (EAGLE3 for Gemma 4)
+    # Speculative decoding (NEXTN for Gemma 4 — matches official config)
     if exp_cfg["speculative"]:
-        engine_kwargs["speculative_algorithm"] = "EAGLE3"
+        engine_kwargs["speculative_algorithm"] = "NEXTN"
         engine_kwargs["speculative_draft_model_path"] = MODEL_ASSISTANT
         engine_kwargs["speculative_num_steps"] = exp_cfg["spec_k"]
-        engine_kwargs["speculative_eagle_topk"] = 4
-        engine_kwargs["speculative_num_draft_tokens"] = 16
+        engine_kwargs["speculative_eagle_topk"] = 1
+        engine_kwargs["speculative_num_draft_tokens"] = 6
 
     print(f"Engine kwargs: {engine_kwargs}", flush=True)
 

@@ -105,6 +105,15 @@ def create_text_only_model(model_path, output_path):
         config["video_config"] = None
         print("  Removed video_config")
 
+    # Change architecture to text-only so vLLM doesn't try multimodal path
+    if "architectures" in config:
+        config["architectures"] = ["Gemma4ForCausalLM"]
+        print("  Changed architectures to Gemma4ForCausalLM")
+    # Also update model_type to avoid multimodal processor
+    if config.get("model_type") == "gemma4":
+        config["model_type"] = "gemma4_text"
+        print("  Changed model_type to gemma4_text")
+
     # Save modified config
     with open(output_config_path, "w") as f:
         json.dump(config, f, indent=2)
