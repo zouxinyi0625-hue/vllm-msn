@@ -319,6 +319,8 @@ def run_experiment(
         context_length=sc_cfg["max_model_len"],
         mem_fraction_static=exp_cfg["gpu_memory_utilization"],
         enable_torch_compile=True,
+        # Scheduling: use longest-prefix-match for shared chat template prefixes
+        schedule_policy="lpm",
     )
 
     # Quantization
@@ -350,6 +352,26 @@ def run_experiment(
     t_engine = time.time()
     engine = sgl.Engine(**engine_kwargs)
     print(f"engine built in {time.time()-t_engine:.1f}s", flush=True)
+
+    # Diagnostic: print engine internal config to verify optimizations
+    try:
+        server_args = getattr(engine, "server_args", None)
+        if server_args:
+            print(f"[DIAG] server_args.enable_torch_compile = {getattr(server_args, 'enable_torch_compile', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.disable_cuda_graph = {getattr(server_args, 'disable_cuda_graph', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.chunked_prefill_size = {getattr(server_args, 'chunked_prefill_size', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.max_running_requests = {getattr(server_args, 'max_running_requests', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.mem_fraction_static = {getattr(server_args, 'mem_fraction_static', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.schedule_policy = {getattr(server_args, 'schedule_policy', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.attention_backend = {getattr(server_args, 'attention_backend', 'N/A')}", flush=True)
+            print(f"[DIAG] server_args.cuda_graph_max_bs = {getattr(server_args, 'cuda_graph_max_bs', 'N/A')}", flush=True)
+        else:
+            print("[DIAG] server_args not found, trying engine attributes...", flush=True)
+            for attr in dir(engine):
+                if any(k in attr.lower() for k in ['compile', 'cuda', 'chunk', 'schedule', 'attention', 'running']):
+                    print(f"[DIAG] engine.{attr} = {getattr(engine, attr, 'N/A')}", flush=True)
+    except Exception as diag_err:
+        print(f"[DIAG] diagnostic failed: {diag_err}", flush=True)
 
     rows: list[dict] = []
     for rep in range(1, reps + 1):
