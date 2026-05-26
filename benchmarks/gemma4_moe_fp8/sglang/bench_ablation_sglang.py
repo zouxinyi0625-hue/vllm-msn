@@ -209,8 +209,8 @@ EXPERIMENTS: dict[str, dict] = {
     ),
     # === Group F: W8A8 quantization ===
     "S013": dict(
-        label="W8A8 + CUDA graphs — weight+activation quantization",
-        quantization="w8a8",
+        label="W8A8_INT8 + CUDA graphs — weight+activation quantization",
+        quantization="w8a8_int8",
         cuda_graphs=True,
         speculative=False, spec_k=0,
         max_num_seqs=128,
@@ -218,8 +218,8 @@ EXPERIMENTS: dict[str, dict] = {
         model_variant="full",
     ),
     "S014": dict(
-        label="W8A8 + CG + NEXTN spec k=5",
-        quantization="w8a8",
+        label="W8A8_INT8 + CG + NEXTN spec k=5",
+        quantization="w8a8_int8",
         cuda_graphs=True,
         speculative=True, spec_k=5,
         max_num_seqs=128,
