@@ -585,6 +585,8 @@ def main() -> int:
     )
     ap.add_argument("--reps", type=int, default=2,
                     help="Repetitions per experiment (default: 2)")
+    ap.add_argument("--gpu-mem", type=float, default=None,
+                    help="Override gpu_memory_utilization for all experiments")
     ap.add_argument("--list", action="store_true",
                     help="Print the experiment matrix and exit")
     args = ap.parse_args()
@@ -605,7 +607,11 @@ def main() -> int:
             print(f"ERROR: unknown experiment ID '{exp_id}'. "
                   f"Valid: {list(EXPERIMENTS.keys())}", file=sys.stderr)
             return 1
-        exp_cfg = EXPERIMENTS[exp_id]
+        exp_cfg = dict(EXPERIMENTS[exp_id])  # copy to avoid mutation
+        # --gpu-mem or ABLATION_GPU_MEM_OVERRIDE env override
+        gpu_mem_override = args.gpu_mem or os.environ.get("ABLATION_GPU_MEM_OVERRIDE")
+        if gpu_mem_override:
+            exp_cfg["gpu_memory_utilization"] = float(gpu_mem_override)
 
         # Log the attention backend env var (set by run_ablation.sh before import).
         # Note: Gemma 4 has heterogeneous attention head dims (256 and 512), so
