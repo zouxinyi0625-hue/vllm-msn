@@ -207,6 +207,25 @@ EXPERIMENTS: dict[str, dict] = {
         gpu_memory_utilization=0.90,
         model_variant="text_only",
     ),
+    # === Group F: W8A8 quantization ===
+    "S013": dict(
+        label="W8A8 + CUDA graphs — weight+activation quantization",
+        quantization="w8a8",
+        cuda_graphs=True,
+        speculative=False, spec_k=0,
+        max_num_seqs=128,
+        gpu_memory_utilization=0.90,
+        model_variant="full",
+    ),
+    "S014": dict(
+        label="W8A8 + CG + NEXTN spec k=5",
+        quantization="w8a8",
+        cuda_graphs=True,
+        speculative=True, spec_k=5,
+        max_num_seqs=128,
+        gpu_memory_utilization=0.90,
+        model_variant="full",
+    ),
 }
 
 
@@ -318,12 +337,17 @@ def run_experiment(
     # setting this too high starves CUDA graphs. Use 0.80 to leave room for graphs.
     mem_frac = min(exp_cfg["gpu_memory_utilization"], 0.80)
 
+    # torch_compile conflicts with CUDA graphs on large models — compiled kernels
+    # consume too much memory leaving no room for graph capture beyond bs=1.
+    # Only enable torch_compile when CUDA graphs are disabled.
+    use_torch_compile = not exp_cfg["cuda_graphs"]
+
     engine_kwargs: dict = dict(
         model_path=model,
         trust_remote_code=True,
         context_length=sc_cfg["max_model_len"],
         mem_fraction_static=mem_frac,
-        enable_torch_compile=True,
+        enable_torch_compile=use_torch_compile,
         # Scheduling: use longest-prefix-match for shared chat template prefixes
         schedule_policy="lpm",
     )

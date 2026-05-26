@@ -33,7 +33,7 @@ REPS=2
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --all)
-            EXP_IDS="S001,S002,S003,S004,S005,S006,S007,S008,S009,S010,S011,S012"
+            EXP_IDS="S001,S002,S003,S004,S005,S006,S007,S008,S009,S010,S011,S012,S013,S014"
             shift ;;
         --baseline)
             EXP_IDS="S001,S002"
