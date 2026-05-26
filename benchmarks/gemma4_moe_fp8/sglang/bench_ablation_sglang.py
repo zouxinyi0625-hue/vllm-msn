@@ -313,11 +313,16 @@ def run_experiment(
     print(f"loaded {len(prompts)} prompts from {sc_cfg['dataset']}", flush=True)
 
     # Build SGLang Engine kwargs
+    # SGLang mem_fraction_static is the fraction of *remaining* memory (after model)
+    # allocated to KV cache. Unlike vLLM's gpu_memory_utilization (total budget),
+    # setting this too high starves CUDA graphs. Use 0.80 to leave room for graphs.
+    mem_frac = min(exp_cfg["gpu_memory_utilization"], 0.80)
+
     engine_kwargs: dict = dict(
         model_path=model,
         trust_remote_code=True,
         context_length=sc_cfg["max_model_len"],
-        mem_fraction_static=exp_cfg["gpu_memory_utilization"],
+        mem_fraction_static=mem_frac,
         enable_torch_compile=True,
         # Scheduling: use longest-prefix-match for shared chat template prefixes
         schedule_policy="lpm",
