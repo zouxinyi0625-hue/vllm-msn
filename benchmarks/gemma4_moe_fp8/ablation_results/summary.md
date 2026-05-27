@@ -71,3 +71,61 @@ Estimated contribution of each optimization layer, from ablation pairs:
   disable MTP at optimal (E012-E006) — negative expected : -456.7 tok/s (-26.1%)
   disable CUDA graphs at optimal (E013-E006) — negative expected : -141.5 tok/s (-8.1%)
   BF16 weights at optimal (E014-E006) — isolates FP8 : -158.5 tok/s (-9.1%)
+
+---
+
+## A100 80GB — gpu_memory=0.95 (full results from all_runs_80.csv)
+
+_Uses `vllm.LLM` offline engine (bench_ablation.py), scenario sc1, 1000 prompts._
+
+| Exp | Label | out tok/s (mean) | ±σ | reps | gpu_mem |
+|-----|-------|:----------------:|:--:|:----:|:-------:|
+| E001 | BF16 baseline — matches REPRODUCE_PRODSHAPE sc1 | 646.7 | 19.8 | 5 | 0.9 |
+| E002 | +FP8 weights (kv cache stays BF16 / auto) | 1090.2 | 69.8 | 5 | 0.9 |
+| E003 | BF16 + CUDA graphs (enforce_eager=False) | 965.4 | 6.2 | 5 | 0.9 |
+| E004 | +CUDA graphs (enforce_eager=False) | 1432.7 | 19.1 | 5 | 0.9 |
+| E005 | +MTP speculative decoding (k=5) | 1967.0 | 17.8 | 6 | 0.9 |
+| E006 | +text-only model (vision stripped) | 2017.3 | 17.7 | 6 | 0.9 |
+| E007 | batch sweep: mns=64 | 1859.3 | 10.1 | 5 | 0.9 |
+| E008 | batch sweep: mns=192 | 1982.6 | 25.9 | 5 | 0.9 |
+| E009 | batch sweep: mns=256 | 1998.2 | 7.6 | 5 | 0.9 |
+| E010 | gpu_mem sweep: 0.80 | 1938.8 | 19.3 | 5 | 0.8 |
+| E011 | gpu_mem sweep: 0.95 | 2020.1 | 17.7 | 5 | 0.95 |
+| E012 | no MTP at optimal (isolates MTP contribution) | 1465.4 | 9.3 | 5 | 0.9 |
+| E013 | no CUDA graphs at optimal (isolates CG contribution) | 1815.9 | 75.2 | 5 | 0.9 |
+| E014 | BF16 weights at optimal config (isolates FP8 weight contribution) | 1840.9 | 18.4 | 5 | 0.9 |
+| E015 | BF16 reference (text-only, no opts) | 721.0 | 35.3 | 5 | 0.9 |
+
+**Best**: E011 (gpu_mem=0.95) — 2020.1 output tok/s (3.12× vs BF16 baseline)
+
+---
+
+## A100 80GB — gpu_memory=0.5 (simulating ~40GB, from all_runs_40_0.5.csv)
+
+_Uses `vllm.LLM` offline engine (bench_ablation.py), scenario sc1, 1000 prompts. Skips BF16 exps (OOM)._
+
+| Exp | Label | out tok/s (mean) | ±σ | reps |
+|-----|-------|:----------------:|:--:|:----:|
+| E002 | +FP8 weights (kv cache stays BF16 / auto) | 326.2 | 4.5 | 2 |
+| E004 | +CUDA graphs (enforce_eager=False) | 687.8 | 0.7 | 2 |
+| E005 | +MTP speculative decoding (k=5) | 1244.7 | 0.5 | 2 |
+| E006 | +text-only model (vision stripped) | 1509.2 | 4.5 | 2 |
+| E007 | batch sweep: mns=64 | 1503.3 | 2.7 | 2 |
+| E008 | batch sweep: mns=192 | 1489.3 | 1.5 | 2 |
+| E009 | batch sweep: mns=256 | 1477.6 | 0.7 | 2 |
+| E010 | gpu_mem sweep: 0.80 | 1499.7 | 0.4 | 2 |
+| E011 | gpu_mem sweep: 0.95 | 1517.7 | 6.8 | 2 |
+| E012 | no MTP at optimal (isolates MTP contribution) | 843.8 | 5.1 | 2 |
+| E013 | no CUDA graphs at optimal (isolates CG contribution) | 1219.4 | 1.0 | 2 |
+
+**Best**: E011 (gpu_mem=0.95) — 1517.7 output tok/s
+**Degradation vs 80GB (0.9)**: E006 best-comparable: 1509.2 vs 2017.3 = 0.75× (25% slower at 40GB)
+
+### Key observations (40GB constraint)
+- FP8 eager-only (E002) is severely memory-bound: 326 tok/s (vs 1090 at 80GB)
+- CUDA graphs (E004) recover to 688 tok/s (2.1× over eager)
+- MTP (E005) adds another 1.8× on top of CUDA graphs
+- text-only (E006) best at 1509 tok/s — 75% of 80GB performance
+- Batch size and gpu_mem sweeps show minimal difference (all ±2%)
+- MTP contribution: E006 vs E012 = +665 tok/s (+79%)
+- CUDA graphs contribution: E006 vs E013 = +290 tok/s (+24%)
