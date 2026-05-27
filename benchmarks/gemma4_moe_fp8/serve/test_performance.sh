@@ -16,6 +16,13 @@ MODEL_NAME=${4:-gemma4}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATASET_PATH="${DATASET_PATH:-${SCRIPT_DIR}/../datasets/sc1_delta_v2.jsonl}"
 
+# Tokenizer path: use text_only model dir for tokenizer
+if [[ -z "${_ModelDataPath_}" ]]; then
+  TOKENIZER_PATH="${GEMMA4_TEXT_ONLY_MODEL_PATH:-$(pwd)/INPUT_model_dir/text_only}"
+else
+  TOKENIZER_PATH="${GEMMA4_TEXT_ONLY_MODEL_PATH:-${_ModelDataPath_}/text_only}"
+fi
+
 BASE_URL="http://${HOST}:${PORT}"
 
 echo "=== Gemma4 E011 Online Serving Benchmark ==="
@@ -48,6 +55,7 @@ vllm bench serve \
   --backend openai-chat \
   --base-url "$BASE_URL" \
   --model "$MODEL_NAME" \
+  --tokenizer "$TOKENIZER_PATH" \
   --dataset-name custom \
   --dataset-path "$DATASET_PATH" \
   --num-prompts "$NUM_PROMPTS" \
@@ -65,6 +73,7 @@ for RATE in 10 5 2 1; do
     --backend openai-chat \
     --base-url "$BASE_URL" \
     --model "$MODEL_NAME" \
+    --tokenizer "$TOKENIZER_PATH" \
     --dataset-name custom \
     --dataset-path "$DATASET_PATH" \
     --num-prompts "$NUM_PROMPTS" \
