@@ -54,6 +54,7 @@ echo "========================================"
 vllm bench serve \
   --backend openai-chat \
   --base-url "$BASE_URL" \
+  --endpoint /v1/chat/completions \
   --model "$MODEL_NAME" \
   --tokenizer "$TOKENIZER_PATH" \
   --dataset-name custom \
@@ -72,6 +73,7 @@ for RATE in 10 5 2 1; do
   vllm bench serve \
     --backend openai-chat \
     --base-url "$BASE_URL" \
+    --endpoint /v1/chat/completions \
     --model "$MODEL_NAME" \
     --tokenizer "$TOKENIZER_PATH" \
     --dataset-name custom \
