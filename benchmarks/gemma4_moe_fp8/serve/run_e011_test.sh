@@ -6,7 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT=${1:-8100}
 TP_SIZE=${2:-1}
-NUM_PROMPTS=${3:-500}
+NUM_PROMPTS=${3:-1000}
 
 # --- Environment ---
 export _ModelDataPath_=/scratch/azureml/cr/j/3516b4b376e7447d9bb012f326e5b81b/exe/wd/vllm-msn/models

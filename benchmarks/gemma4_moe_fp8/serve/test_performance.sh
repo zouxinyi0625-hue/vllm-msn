@@ -10,14 +10,18 @@ set -e
 
 HOST=${1:-localhost}
 PORT=${2:-8100}
-NUM_PROMPTS=${3:-500}
+NUM_PROMPTS=${3:-1000}
 MODEL_NAME=${4:-gemma4}
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATASET_PATH="${DATASET_PATH:-${SCRIPT_DIR}/../datasets/sc1_delta_v2.jsonl}"
 
 BASE_URL="http://${HOST}:${PORT}"
 
 echo "=== Gemma4 E011 Online Serving Benchmark ==="
 echo "  Target: ${BASE_URL}"
 echo "  Model: ${MODEL_NAME}"
+echo "  Dataset: ${DATASET_PATH}"
 echo "  Prompts: ${NUM_PROMPTS}"
 echo ""
 
@@ -44,10 +48,10 @@ vllm bench serve \
   --backend openai-chat \
   --base-url "$BASE_URL" \
   --model "$MODEL_NAME" \
-  --dataset-name random \
-  --random-input-len 4000 \
-  --random-output-len 1300 \
+  --dataset-name custom \
+  --dataset-path "$DATASET_PATH" \
   --num-prompts "$NUM_PROMPTS" \
+  --output-len 8192 \
   --request-rate inf
 
 echo ""
@@ -61,10 +65,10 @@ for RATE in 10 5 2 1; do
     --backend openai-chat \
     --base-url "$BASE_URL" \
     --model "$MODEL_NAME" \
-    --dataset-name random \
-    --random-input-len 4000 \
-    --random-output-len 1300 \
+    --dataset-name custom \
+    --dataset-path "$DATASET_PATH" \
     --num-prompts "$NUM_PROMPTS" \
+    --output-len 8192 \
     --request-rate "$RATE"
   echo ""
 done
