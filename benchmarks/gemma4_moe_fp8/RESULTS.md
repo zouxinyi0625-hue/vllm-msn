@@ -1,10 +1,13 @@
 # Gemma 4 MoE FP8 — Benchmark Results
 
-**Model**: Gemma-4-26B-A4B-it (Mixture of Experts, FP8)
-**Hardware**: NVIDIA A100 80GB (single GPU, TP=1)
-**Dataset**: sc1_delta_v2.jsonl, 1000 prompts
-**Data source**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/sc1_delta_v2.jsonl?property=info
-**vLLM version**: latest (with MTP speculative decoding support)
+- **Model**: Gemma-4-26B-A4B-it (Mixture of Experts, FP8)
+- **Hardware**: 
+
+  - NVIDIA A100 80GB (offline / local service)
+  - NVIDIA A100 40GB (online service) 
+- **Dataset**: sc1_delta_v2.jsonl, 1000 prompts
+- **Data source**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/sc1_delta_v2.jsonl?property=info
+- **vLLM version**: dev (built from source, with MTP speculative decoding support)
 
 ---
 
@@ -54,25 +57,33 @@
 
 **Best**: E011 — **2020 output tok/s** (3.12× vs BF16 baseline)
 
+### A100 80GB — Simulated 40GB (gpu_mem=0.45, E011 only)
+
+_Offline `vllm.LLM` engine, scenario sc1, 1000 prompts, 2 reps._
+
+| Exp | gpu_mem | out tok/s (mean) | ±σ | total tok/s | Duration (s) |
+|-----|:-------:|:----------------:|:--:|:-----------:|:------------:|
+| E011 | 0.45 | 1255.5 | 5.6 | 5446.3 | 1040 |
+
 ### A100 80GB — Simulated 40GB (gpu_mem=0.5)
 
 **Full report**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/all_runs_40_0.5.csv?property=info
 
 _BF16 experiments (E001, E003, E014, E015) OOM at 40GB._
 
-| Exp | Label | out tok/s | ±σ | vs 80GB |
-|-----|-------|:---------:|:--:|:-------:|
-| E002 | +FP8 weights | 326.2 | 4.5 | 0.30× |
-| E004 | +CUDA graphs | 687.8 | 0.7 | 0.48× |
-| E005 | +MTP k=5 | 1244.7 | 0.5 | 0.63× |
-| E006 | +text-only | 1509.2 | 4.5 | 0.75× |
-| E007 | batch mns=64 | 1503.3 | 2.7 | 0.81× |
-| E008 | batch mns=192 | 1489.3 | 1.5 | 0.75× |
-| E009 | batch mns=256 | 1477.6 | 0.7 | 0.74× |
-| E010 | gpu_mem=0.80 | 1499.7 | 0.4 | 0.77× |
-| E011 | gpu_mem=0.95 | **1517.7** | 6.8 | 0.75× |
-| E012 | no MTP (isolate) | 843.8 | 5.1 | 0.58× |
-| E013 | no CG (isolate) | 1219.4 | 1.0 | 0.67× |
+| Exp | Label | out tok/s | ±σ | vs E002 | vs 80GB |
+|-----|-------|:---------:|:--:|:-------:|:-------:|
+| E002 | +FP8 weights | 326.2 | 4.5 | 1.00× | 0.30× |
+| E004 | +CUDA graphs | 687.8 | 0.7 | 2.11× | 0.48× |
+| E005 | +MTP k=5 | 1244.7 | 0.5 | 3.82× | 0.63× |
+| E006 | +text-only | 1509.2 | 4.5 | 4.63× | 0.75× |
+| E007 | batch mns=64 | 1503.3 | 2.7 | 4.61× | 0.81× |
+| E008 | batch mns=192 | 1489.3 | 1.5 | 4.57× | 0.75× |
+| E009 | batch mns=256 | 1477.6 | 0.7 | 4.53× | 0.74× |
+| E010 | gpu_mem=0.80 | 1499.7 | 0.4 | 4.60× | 0.77× |
+| E011 | gpu_mem=0.95 | **1517.7** | 6.8 | **4.65×** | 0.75× |
+| E012 | no MTP (isolate) | 843.8 | 5.1 | 2.59× | 0.58× |
+| E013 | no CG (isolate) | 1219.4 | 1.0 | 3.74× | 0.67× |
 
 **Best**: E011 — **1518 output tok/s** (75% of 80GB performance)
 
@@ -117,9 +128,45 @@ _BF16 experiments (E001, E003, E014, E015) OOM at 40GB._
 
 3. **TPOT and ITL are stable** (~12ms TPOT, ~60ms ITL) — per-token decoding speed unaffected by queuing pressure.
 
-4. **Online vs Offline throughput comparison** (40GB sim):
-   - Offline (vllm.LLM, E011): 1518 output tok/s
-   - Online (vllm serve, unlimited): 1277 output tok/s (0.84× of offline)
-   - Gap is expected due to HTTP overhead and scheduler queuing
+4. **Online vs Offline throughput comparison** (gpu_mem=0.45, simulating 40GB):
+   - Offline (vllm.LLM, E011, gpu_mem=0.45): 1255 output tok/s
+   - Online local (vllm serve, concurrency=32): 1270 output tok/s
+   - Online local (vllm serve, unlimited): 1277 output tok/s
+   - Offline and online local throughput are nearly identical (~1255-1277 tok/s)
 
 5. **Recommendation**: Use `max-concurrency=32` for production serving on 40GB A100-equivalent. Best latency-throughput tradeoff.
+
+---
+
+## Part 3: Online Service (A100 40G ×1, DLIS Deployment)
+
+### Deployment
+
+**Image build pipeline (AML)**:
+[Pipelines - Run 68924122](https://msasg.visualstudio.com/Bing_and_IPG/_build/results?buildId=68924122&view=results)
+
+**DLIS deploy pipeline**:
+[IFF-Deployment [Deploy] [dlis-coreranker] [chrona-gemma4] [FalconCentralUS_PrivateIsland] BuildID_68922383](https://msasg.visualstudio.com/Bing_and_IPG/_build/results?buildId=68922383&view=results)
+
+**Endpoint URL**:
+```
+https://fabricrouter-azureglobalprivate.ingress-dlis.ingress.cus.microsoft-falcon.net/dlis-coreranker.chrona-gemma4/v1/chat/completions
+```
+
+**Connectivity test**:
+```bash
+curl https://fabricrouter-azureglobalprivate.ingress-dlis.ingress.cus.microsoft-falcon.net/dlis-coreranker.chrona-gemma4/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemma4","messages":[{"role":"user","content":"Hello"}],"max_tokens":128}'
+```
+
+### Setup
+
+- **Server config (E011 optimal)**: FP8, CUDA graphs, MTP k=5, text-only, max_model_len=24576
+- **Hardware**: A100 40GB ×1 (DLIS FalconCentralUS)
+- **Benchmark**: `vllm bench serve`, openai-chat backend, request_rate=inf, max-concurrency=32, 1000 prompts, output_len=8192
+- **Script**: `benchmarks/gemma4_moe_fp8/serve/test_online_service.sh`
+
+### Results
+
+_TODO: pending benchmark run_
