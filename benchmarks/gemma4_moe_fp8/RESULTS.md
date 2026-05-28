@@ -1,0 +1,125 @@
+# Gemma 4 MoE FP8 — Benchmark Results
+
+**Model**: Gemma-4-26B-A4B-it (Mixture of Experts, FP8)
+**Hardware**: NVIDIA A100 80GB (single GPU, TP=1)
+**Dataset**: sc1_delta_v2.jsonl, 1000 prompts
+**Data source**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/sc1_delta_v2.jsonl?property=info
+**vLLM version**: latest (with MTP speculative decoding support)
+
+---
+
+## Part 1: Offline Throughput (vllm.LLM engine)
+
+### Experiment Definitions
+
+| Exp | Label | Quant | CUDA Graphs | MTP k | max_num_seqs | gpu_mem | Model |
+|-----|-------|-------|-------------|-------|:------------:|:-------:|-------|
+| E001 | BF16 baseline | None | ✗ (eager) | 0 | 128 | 0.90 | full |
+| E002 | +FP8 weights | fp8 | ✗ (eager) | 0 | 128 | 0.90 | full |
+| E003 | BF16 + CUDA graphs | None | ✓ | 0 | 128 | 0.90 | full |
+| E004 | +CUDA graphs | fp8 | ✓ | 0 | 128 | 0.90 | full |
+| E005 | +MTP k=5 | fp8 | ✓ | 5 | 128 | 0.90 | full |
+| E006 | +text-only | fp8 | ✓ | 5 | 128 | 0.90 | text_only |
+| E007 | batch mns=64 | fp8 | ✓ | 5 | 64 | 0.90 | text_only |
+| E008 | batch mns=192 | fp8 | ✓ | 5 | 192 | 0.90 | text_only |
+| E009 | batch mns=256 | fp8 | ✓ | 5 | 256 | 0.90 | text_only |
+| E010 | gpu_mem=0.80 | fp8 | ✓ | 5 | 128 | 0.80 | text_only |
+| E011 | gpu_mem=0.95 | fp8 | ✓ | 5 | 128 | 0.95 | text_only |
+| E012 | no MTP (isolate) | fp8 | ✓ | 0 | 128 | 0.90 | text_only |
+| E013 | no CG (isolate) | fp8 | ✗ (eager) | 5 | 128 | 0.90 | text_only |
+| E014 | BF16 weights (isolate) | None | ✓ | 5 | 128 | 0.90 | text_only |
+| E015 | BF16 ref (text-only) | None | ✗ (eager) | 0 | 128 | 0.90 | text_only |
+
+### A100 80GB — Full Memory (gpu_mem=0.95)
+
+**Full report**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/all_runs_80.csv?property=info
+
+| Exp | Label | out tok/s | ±σ | vs E001 |
+|-----|-------|:---------:|:--:|:-------:|
+| E001 | BF16 baseline | 646.7 | 19.8 | 1.00× |
+| E002 | +FP8 weights | 1090.2 | 69.8 | 1.69× |
+| E003 | BF16 + CUDA graphs | 965.4 | 6.2 | 1.49× |
+| E004 | +CUDA graphs | 1432.7 | 19.1 | 2.22× |
+| E005 | +MTP k=5 | 1967.0 | 17.8 | 3.04× |
+| E006 | +text-only | 2017.3 | 17.7 | 3.12× |
+| E007 | batch mns=64 | 1859.3 | 10.1 | 2.88× |
+| E008 | batch mns=192 | 1982.6 | 25.9 | 3.07× |
+| E009 | batch mns=256 | 1998.2 | 7.6 | 3.09× |
+| E010 | gpu_mem=0.80 | 1938.8 | 19.3 | 3.00× |
+| E011 | gpu_mem=0.95 | **2020.1** | 17.7 | **3.12×** |
+| E012 | no MTP (isolate) | 1465.4 | 9.3 | 2.27× |
+| E013 | no CG (isolate) | 1815.9 | 75.2 | 2.81× |
+| E014 | BF16 weights (isolate) | 1840.9 | 18.4 | 2.85× |
+| E015 | BF16 ref (text-only) | 721.0 | 35.3 | 1.11× |
+
+**Best**: E011 — **2020 output tok/s** (3.12× vs BF16 baseline)
+
+### A100 80GB — Simulated 40GB (gpu_mem=0.5)
+
+**Full report**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/all_runs_40_0.5.csv?property=info
+
+_BF16 experiments (E001, E003, E014, E015) OOM at 40GB._
+
+| Exp | Label | out tok/s | ±σ | vs 80GB |
+|-----|-------|:---------:|:--:|:-------:|
+| E002 | +FP8 weights | 326.2 | 4.5 | 0.30× |
+| E004 | +CUDA graphs | 687.8 | 0.7 | 0.48× |
+| E005 | +MTP k=5 | 1244.7 | 0.5 | 0.63× |
+| E006 | +text-only | 1509.2 | 4.5 | 0.75× |
+| E007 | batch mns=64 | 1503.3 | 2.7 | 0.81× |
+| E008 | batch mns=192 | 1489.3 | 1.5 | 0.75× |
+| E009 | batch mns=256 | 1477.6 | 0.7 | 0.74× |
+| E010 | gpu_mem=0.80 | 1499.7 | 0.4 | 0.77× |
+| E011 | gpu_mem=0.95 | **1517.7** | 6.8 | 0.75× |
+| E012 | no MTP (isolate) | 843.8 | 5.1 | 0.58× |
+| E013 | no CG (isolate) | 1219.4 | 1.0 | 0.67× |
+
+**Best**: E011 — **1518 output tok/s** (75% of 80GB performance)
+
+### Optimization Contribution (80GB)
+
+| Optimization | Δ tok/s | Δ % |
+|---|---:|---:|
+| FP8 weights (E002 vs E001) | +443 | +69% |
+| CUDA graphs (E004 vs E002) | +343 | +31% |
+| MTP k=5 (E005 vs E004) | +534 | +37% |
+| Text-only model (E006 vs E005) | +50 | +3% |
+| gpu_mem 0.90→0.95 (E011 vs E006) | +3 | +0.1% |
+
+---
+
+## Part 2: Online Serving (vllm serve + vllm bench serve)
+
+### Setup
+
+- **Server config (E011 optimal)**: FP8, CUDA graphs, MTP k=5, text-only, max_model_len=24576
+- **GPU memory**: `gpu_memory_utilization=0.45` (simulating 40GB A100 on 80GB hardware)
+- **Benchmark**: `vllm bench serve`, openai-chat backend, request_rate=inf, 1000 prompts, output_len=8192
+- **Date**: 2026-05-28
+
+### Results — Concurrency Sweep
+
+| Max Concurrency | Req/s | Output tok/s | Total tok/s | Mean TTFT (s) | Median TTFT (s) | P99 TTFT (s) | Mean TPOT (ms) | Mean ITL (ms) | Duration (s) |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Unlimited | 0.90 | 1277 | 5218 | 539.8 | 539.3 | 1086.2 | 12.08 | 59.54 | 1109 |
+| 32 | 0.92 | 1270 | 5291 | 17.7 | 17.4 | 30.2 | 12.34 | 60.23 | 1087 |
+| 64 | 0.90 | 1275 | 5228 | 51.7 | 52.0 | 69.9 | 12.30 | 59.65 | 1106 |
+| 128 | 0.91 | 1279 | 5278 | 114.2 | 120.5 | 145.9 | 12.23 | 59.53 | 1093 |
+
+### Key Observations
+
+1. **Throughput is constant** (~0.90-0.92 req/s, ~5200-5290 total tok/s) regardless of concurrency — GPU is saturated in all cases.
+
+2. **TTFT is the critical differentiator**:
+   - Unlimited: TTFT = 540s (all 1000 requests queue simultaneously)
+   - max-concurrency=32: TTFT = 17.7s — **30× improvement**, no throughput loss
+   - 64 / 128 are intermediate tradeoffs
+
+3. **TPOT and ITL are stable** (~12ms TPOT, ~60ms ITL) — per-token decoding speed unaffected by queuing pressure.
+
+4. **Online vs Offline throughput comparison** (40GB sim):
+   - Offline (vllm.LLM, E011): 1518 output tok/s
+   - Online (vllm serve, unlimited): 1277 output tok/s (0.84× of offline)
+   - Gap is expected due to HTTP overhead and scheduler queuing
+
+5. **Recommendation**: Use `max-concurrency=32` for production serving on 40GB A100-equivalent. Best latency-throughput tradeoff.
