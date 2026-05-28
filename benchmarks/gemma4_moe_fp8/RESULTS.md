@@ -11,6 +11,17 @@
 
 ---
 
+## Summary — Output Token Throughput (E011 config)
+
+| Environment | GPU | gpu_mem | Mode | Concurrency | Output tok/s |
+|---|---|:---:|---|:---:|:---:|
+| A100 80GB | 80GB | 0.95 | Offline (vllm.LLM) | — | **2020** |
+| A100 80GB (sim 40G) | 80GB | 0.45 | Offline (vllm.LLM) | — | 1255 |
+| A100 80GB (sim 40G) | 80GB | 0.45 | Online (vllm serve) | 32 | 1270 |
+| A100 40GB (DLIS) | 40GB | 0.95 | Online (vllm serve) | 32 | 1293 |
+
+---
+
 ## Part 1: Offline Throughput (vllm.LLM engine)
 
 ### Experiment Definitions
