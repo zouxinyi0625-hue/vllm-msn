@@ -83,7 +83,8 @@ vllm bench serve \
   --dataset-path "$DATASET_PATH" \
   --num-prompts "$NUM_PROMPTS" \
   --output-len 8192 \
-  --request-rate inf
+  --request-rate inf \
+  --max-concurrency 10
 
 echo ""
 
