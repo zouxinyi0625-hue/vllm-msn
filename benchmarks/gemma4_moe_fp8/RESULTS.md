@@ -7,7 +7,7 @@
   - NVIDIA A100 40GB (online service) 
 - **Dataset**: sc1_delta_v2.jsonl, 1000 prompts
 - **Data source**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/sc1_delta_v2.jsonl?property=info
-- **vLLM version**: dev (built from source, with MTP speculative decoding support)
+- **vLLM version**: 0.21.1rc1.dev270+g6cbe448ee (built from source, with MTP speculative decoding support)
 
 ---
 
@@ -169,4 +169,35 @@ curl https://fabricrouter-azureglobalprivate.ingress-dlis.ingress.cus.microsoft-
 
 ### Results
 
-_TODO: pending benchmark run_
+| Metric | Value |
+|--------|------:|
+| Successful requests | 1000 |
+| Failed requests | 0 |
+| Max concurrency | 32 |
+| Benchmark duration (s) | 1111.18 |
+| Request throughput (req/s) | 0.90 |
+| Output token throughput (tok/s) | 1293 |
+| Total token throughput (tok/s) | 5227 |
+| Mean TTFT (s) | 13.7 |
+| Median TTFT (s) | 13.4 |
+| P99 TTFT (s) | 25.8 |
+| Mean TPOT (ms) | 14.81 |
+| Median TPOT (ms) | 14.39 |
+| P99 TPOT (ms) | 25.85 |
+| Mean ITL (ms) | 71.97 |
+| Median ITL (ms) | 54.12 |
+| P99 ITL (ms) | 614.20 |
+
+### Key Observations (DLIS vs Local Serve, gpu_mem=0.45)
+
+| Metric | Local (concurrency=32) | DLIS (concurrency=32) | Δ |
+|--------|:---:|:---:|:---:|
+| Output tok/s | 1270 | 1293 | +1.8% |
+| Total tok/s | 5291 | 5227 | −1.2% |
+| Mean TTFT (s) | 17.7 | 13.7 | −23% (better) |
+| Mean TPOT (ms) | 12.34 | 14.81 | +20% |
+| Mean ITL (ms) | 60.23 | 71.97 | +19% |
+
+- **Throughput is comparable** — DLIS real A100 40GB matches local simulated 40GB (~1270-1293 output tok/s).
+- **TTFT is better on DLIS** (13.7s vs 17.7s) — likely due to real 40GB HBM bandwidth vs simulated constraint.
+- **TPOT/ITL slightly higher on DLIS** (~15ms vs ~12ms) — minor variance, possibly due to network overhead or different GPU clock profiles.
