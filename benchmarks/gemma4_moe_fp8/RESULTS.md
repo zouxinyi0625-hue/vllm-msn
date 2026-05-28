@@ -153,11 +153,11 @@ _BF16 experiments (E001, E003, E014, E015) OOM at 40GB._
 
 ### Deployment
 
-**Image build pipeline (AML)**:
-[Pipelines - Run 68924122](https://msasg.visualstudio.com/Bing_and_IPG/_build/results?buildId=68924122&view=results)
+**Image build pipeline (AML → DLIS)**:
+[Pipelines - Run 68925548](https://msasg.visualstudio.com/Bing_and_IPG/_build/results?buildId=68925548&view=results)
 
 **DLIS deploy pipeline**:
-[IFF-Deployment [Deploy] [dlis-coreranker] [chrona-gemma4] [FalconCentralUS_PrivateIsland] BuildID_68922383](https://msasg.visualstudio.com/Bing_and_IPG/_build/results?buildId=68922383&view=results)
+[Pipelines - Run 68926058](https://msasg.visualstudio.com/Bing_and_IPG/_build/results?buildId=68926058&view=results)
 
 **Endpoint URL**:
 ```
