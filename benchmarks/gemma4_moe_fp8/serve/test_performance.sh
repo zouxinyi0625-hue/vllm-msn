@@ -1,6 +1,9 @@
 #!/bin/bash
 # Performance test for Gemma4 E011 serve config.
-# Runs vllm bench serve at multiple request rates to measure throughput and latency.
+# Runs vllm bench serve at multiple request rates and concurrency levels.
+#
+# To simulate 40G A100 (on 80G GPU), start server with gpu_memory_utilization=0.45:
+#   bash serve_e011.sh 8100 1 24576 0.45
 #
 # Usage:
 #   bash test_performance.sh --base-url http://host:port [--num-prompts N] [--model NAME]
@@ -8,6 +11,11 @@
 #
 # Prerequisites: server must be running (serve_e011.sh)
 set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OUTPUT_DIR="${SCRIPT_DIR}/bench_results"
+mkdir -p "$OUTPUT_DIR"
+RESULT_FILE="${OUTPUT_DIR}/result_$(date +%Y%m%d_%H%M%S).txt"
 
 BASE_URL=""
 NUM_PROMPTS=1000
@@ -71,40 +79,36 @@ echo ""
 
 # --- Throughput test (request_rate=inf) ---
 echo "========================================"
-echo "  TEST 1: Max throughput (rate=inf)"
+echo "  TEST 1: Max throughput (rate=inf, no concurrency limit)"
 echo "========================================"
-vllm bench serve \
-  --backend openai-chat \
-  --base-url "$BASE_URL" \
-  --endpoint /v1/chat/completions \
-  --model "$MODEL_NAME" \
-  --tokenizer "$TOKENIZER_PATH" \
-  --dataset-name custom \
-  --dataset-path "$DATASET_PATH" \
-  --num-prompts "$NUM_PROMPTS" \
-  --output-len 8192 \
-  --request-rate inf \
-  --max-concurrency 10
+COMMON_ARGS=(
+  --backend openai-chat
+  --base-url "$BASE_URL"
+  --endpoint /v1/chat/completions
+  --model "$MODEL_NAME"
+  --tokenizer "$TOKENIZER_PATH"
+  --dataset-name custom
+  --dataset-path "$DATASET_PATH"
+  --num-prompts "$NUM_PROMPTS"
+  --output-len 8192
+  --request-rate inf
+)
+
+vllm bench serve "${COMMON_ARGS[@]}" \
+  2>&1 | tee "$RESULT_FILE"
 
 echo ""
 
-# --- Latency-sensitive tests at various QPS ---
-# for RATE in 10 5 2 1; do
-#   echo "========================================"
-#   echo "  TEST: Request rate = ${RATE} req/s"
-#   echo "========================================"
-#   vllm bench serve \
-#     --backend openai-chat \
-#     --base-url "$BASE_URL" \
-#     --endpoint /v1/chat/completions \
-#     --model "$MODEL_NAME" \
-#     --tokenizer "$TOKENIZER_PATH" \
-#     --dataset-name custom \
-#     --dataset-path "$DATASET_PATH" \
-#     --num-prompts "$NUM_PROMPTS" \
-#     --output-len 8192 \
-#     --request-rate "$RATE"
-#   echo ""
-# done
+# --- Max-concurrency sweep ---
+for CONC in 32 64 128; do
+  echo "========================================"
+  echo "  TEST: rate=inf, max-concurrency=${CONC}"
+  echo "========================================"
+  vllm bench serve "${COMMON_ARGS[@]}" \
+    --max-concurrency "$CONC" \
+    2>&1 | tee -a "$RESULT_FILE"
+  echo ""
+done
 
 echo "=== All tests complete ==="
+echo "Results saved to: ${RESULT_FILE}"
