@@ -4,14 +4,14 @@
 This script takes the dequantized bf16 model from EdgeRazor training and
 re-quantizes it to GPTQ INT4 format that vLLM can accelerate with Marlin kernels.
 
-Usage:
-    pip install auto-gptq transformers torch
+Only requires: transformers, torch, datasets (no auto-gptq needed).
 
+Usage:
     python convert_to_gptq.py \
         --model Xinyi0625/train_maiprofile4b_w4 \
         --output ./Qwen3-4B-GPTQ-Int4 \
         --bits 4 \
-        --group-size 128 \
+        --group-size 256 \
         --dataset datasets/sc1_delta_v2.jsonl \
         --num-samples 128
 
@@ -26,45 +26,30 @@ import sys
 from pathlib import Path
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, GPTQConfig
 
 
 def load_calibration_data(dataset_path: str, tokenizer, num_samples: int,
-                          max_length: int = 2048) -> list:
-    """Load calibration data from the benchmark dataset."""
-    from auto_gptq.utils import get_calib_dataset
-
-    # If dataset is provided, use it; otherwise fall back to auto_gptq default
+                          max_length: int = 2048) -> list[str]:
+    """Load calibration texts from the benchmark dataset."""
     if dataset_path and Path(dataset_path).exists():
         texts = []
         with open(dataset_path, encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                if i >= num_samples:
-                    break
+            for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 d = json.loads(line)
                 texts.append(d["prompt"])
-
-        # Tokenize
-        examples = []
-        for text in texts:
-            encoded = tokenizer(
-                text,
-                truncation=True,
-                max_length=max_length,
-                return_tensors="pt",
-            )
-            examples.append({"input_ids": encoded["input_ids"][0],
-                             "attention_mask": encoded["attention_mask"][0]})
-        return examples
+                if len(texts) >= num_samples:
+                    break
+        return texts
     else:
-        # Use default wikitext2 calibration
-        return get_calib_dataset(
-            "wikitext", tokenizer=tokenizer,
-            n_samples=num_samples, max_length=max_length,
-        )
+        # Fallback: use wikitext from datasets lib
+        from datasets import load_dataset
+        ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+        texts = [t for t in ds["text"] if len(t.strip()) > 100][:num_samples]
+        return texts
 
 
 def main():
@@ -85,37 +70,42 @@ def main():
                     help="Use descending activation order (slower but sometimes better)")
     args = ap.parse_args()
 
-    try:
-        from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
-    except ImportError:
-        print("ERROR: auto-gptq not installed. Run: pip install auto-gptq", file=sys.stderr)
-        return 1
-
     print(f"Loading tokenizer from {args.model}...", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
 
-    print(f"Loading model from {args.model} (bf16)...", flush=True)
-    model = AutoGPTQForCausalLM.from_pretrained(
-        args.model,
-        BaseQuantizeConfig(
-            bits=args.bits,
-            group_size=args.group_size,
-            desc_act=args.desc_act,
-        ),
-        torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
-    )
-
     print(f"Loading calibration data ({args.num_samples} samples)...", flush=True)
-    calib_data = load_calibration_data(
+    calib_texts = load_calibration_data(
         args.dataset, tokenizer, args.num_samples, args.max_length
     )
+    print(f"  Got {len(calib_texts)} calibration texts", flush=True)
 
-    print(f"Quantizing to {args.bits}-bit (group_size={args.group_size})...", flush=True)
-    model.quantize(calib_data)
+    # Tokenize calibration data for GPTQConfig
+    calib_dataset = [
+        tokenizer(text, truncation=True, max_length=args.max_length, return_tensors="pt")
+        for text in calib_texts
+    ]
+
+    print(f"Loading model from {args.model} (bf16) with GPTQ quantization config...",
+          flush=True)
+
+    gptq_config = GPTQConfig(
+        bits=args.bits,
+        group_size=args.group_size,
+        desc_act=args.desc_act,
+        dataset=calib_texts,
+        tokenizer=tokenizer,
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model,
+        quantization_config=gptq_config,
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+        device_map="auto",
+    )
 
     print(f"Saving GPTQ model to {args.output}...", flush=True)
-    model.save_quantized(args.output)
+    model.save_pretrained(args.output)
     tokenizer.save_pretrained(args.output)
 
     print(f"\nDone! Model saved to: {args.output}", flush=True)
