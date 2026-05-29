@@ -29,12 +29,14 @@ def main():
             if not line:
                 continue
             d = json.loads(line)
-            rendered = tok.apply_chat_template(
+            # Render to text first, then tokenize (same as bench_offline.py)
+            rendered_text = tok.apply_chat_template(
                 [{"role": "user", "content": d["prompt"]}],
                 add_generation_prompt=True,
-                tokenize=True,
+                tokenize=False,
             )
-            lengths.append(len(rendered))
+            token_ids = tok(rendered_text, add_special_tokens=False).input_ids
+            lengths.append(len(token_ids))
             if args.num_prompts and len(lengths) >= args.num_prompts:
                 break
 
