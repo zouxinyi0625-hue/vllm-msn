@@ -35,6 +35,7 @@ MODELS = {
     "baseline": "Qwen/Qwen3-4B-Instruct-2507",
     "4bit": "Xinyi0625/train_maiprofile4b_w4",
     "4bit-gptq": "./Qwen3-4B-GPTQ-Int4",
+    "4bit-awq": "./Qwen3-4B-AWQ-Int4",
 }
 
 CSV_FIELDS = [
@@ -212,6 +213,8 @@ def run_one_config(*, scenario: str, cfg: dict, model_tag: str, model: str,
     # Enable GPTQ quantization for gptq models
     if "gptq" in model_tag.lower():
         llm_kwargs["quantization"] = "gptq"
+    elif "awq" in model_tag.lower():
+        llm_kwargs["quantization"] = "awq"
 
     t_engine = time.time()
     llm = LLM(**llm_kwargs)
