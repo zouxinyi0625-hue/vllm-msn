@@ -14,15 +14,12 @@ export HF_TOKEN="${HF_TOKEN:?ERROR: Set HF_TOKEN for private model access}"
 SCENARIO="sc1"
 MAX_NUM_SEQS="128"
 REPS=1
-CHUNK_SIZE=500
-
 echo "=== Qwen3-4B Baseline (bf16) ==="
 python bench_offline.py \
     --scenario "$SCENARIO" \
     --model-tag baseline \
     --max-num-seqs "$MAX_NUM_SEQS" \
     --reps "$REPS" \
-    --chunk-size "$CHUNK_SIZE" \
     --output-dir bench_results_baseline
 
 echo ""
@@ -32,7 +29,6 @@ python bench_offline.py \
     --model-tag 4bit \
     --max-num-seqs "$MAX_NUM_SEQS" \
     --reps "$REPS" \
-    --chunk-size "$CHUNK_SIZE" \
     --output-dir bench_results_4bit
 
 echo ""
