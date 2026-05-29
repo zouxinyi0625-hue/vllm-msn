@@ -55,7 +55,7 @@ SCENARIOS = {
         dataset="datasets/sc1_delta_v2.jsonl",
         num_prompts=1000,
         output_len=8192,
-        max_model_len=24576,
+        max_model_len=16384,
         max_num_batched_tokens=16384,
         gpu_mem_util=0.95,
     ),
