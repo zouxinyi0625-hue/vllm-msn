@@ -26,28 +26,45 @@ from pathlib import Path
 
 
 def load_calibration_data(dataset_path: str, tokenizer, num_samples: int,
-                          seqlen: int = 2048) -> list[str]:
-    """Load calibration texts and pre-tokenize to the format AWQ expects.
+                          seqlen: int = 512) -> list[str]:
+    """Load calibration texts for AWQ.
 
-    AWQ internally concatenates all texts, tokenizes, then splits into seqlen chunks.
-    We need to provide enough text to fill num_samples * seqlen tokens.
+    AWQ's get_calib_dataset tokenizes each text and keeps only those with
+    length >= seqlen. We concatenate short texts to ensure they pass the filter.
     """
+    raw_texts = []
     if dataset_path and Path(dataset_path).exists():
-        texts = []
         with open(dataset_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 d = json.loads(line)
-                texts.append(d["prompt"])
-                if len(texts) >= num_samples * 4:  # load extra to ensure enough tokens
+                raw_texts.append(d["prompt"])
+                if len(raw_texts) >= num_samples * 8:
                     break
-        return texts
     else:
         from datasets import load_dataset
         ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-        return [t for t in ds["text"] if len(t.strip()) > 100][:num_samples * 4]
+        raw_texts = [t for t in ds["text"] if len(t.strip()) > 50][:num_samples * 8]
+
+    # Concatenate short texts to guarantee each sample >= seqlen tokens
+    merged = []
+    buf = ""
+    for t in raw_texts:
+        buf += t + "\n"
+        # Rough check: ~4 chars per token
+        if len(buf) >= seqlen * 5:
+            merged.append(buf)
+            buf = ""
+            if len(merged) >= num_samples:
+                break
+    if buf and len(merged) < num_samples:
+        merged.append(buf)
+
+    print(f"  Prepared {len(merged)} calibration samples (concatenated to ensure seqlen>={seqlen})",
+          flush=True)
+    return merged
 
 
 def main():
