@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 export HF_TOKEN="${HF_TOKEN:?ERROR: Set HF_TOKEN for private model access}"
 
 SCENARIO="sc1"
-MAX_NUM_SEQS="128"
+MAX_NUM_SEQS="512"
 REPS=1
 echo "=== Qwen3-4B Baseline (bf16) ==="
 python bench_offline.py \
