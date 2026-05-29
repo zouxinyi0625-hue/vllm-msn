@@ -184,6 +184,19 @@ def run_one_config(*, scenario: str, cfg: dict, model_tag: str, model: str,
     tok = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
     raw_prompts = load_prompts(cfg["dataset"], cfg["num_prompts"])
     prompts = render_chat(tok, raw_prompts)
+
+    # Filter out prompts that exceed max_model_len (would OOM or error)
+    max_len = cfg["max_model_len"]
+    filtered = []
+    for p in prompts:
+        n_tok = len(tok(p, add_special_tokens=False).input_ids)
+        if n_tok < max_len:
+            filtered.append(p)
+    if len(filtered) < len(prompts):
+        print(f"filtered {len(prompts) - len(filtered)} prompts exceeding "
+              f"max_model_len={max_len}, keeping {len(filtered)}", flush=True)
+    prompts = filtered
+
     print(f"loaded {len(prompts)} prompts from {cfg['dataset']}", flush=True)
 
     llm_kwargs = dict(
