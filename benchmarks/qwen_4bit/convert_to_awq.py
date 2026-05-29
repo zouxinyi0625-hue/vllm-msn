@@ -90,8 +90,7 @@ def main():
     }
 
     print(f"Quantizing to {args.bits}-bit AWQ (group_size={args.group_size})...", flush=True)
-    model.quantize(tokenizer, quant_config=quant_config, calib_data=calib_data,
-                   n_samples=args.num_samples, seqlen=2048)
+    model.quantize(tokenizer, quant_config=quant_config, calib_data=calib_data)
 
     print(f"Saving AWQ model to {args.output}...", flush=True)
     model.save_quantized(args.output)
