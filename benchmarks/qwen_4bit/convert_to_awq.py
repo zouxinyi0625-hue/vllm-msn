@@ -25,8 +25,13 @@ import sys
 from pathlib import Path
 
 
-def load_calibration_data(dataset_path: str, num_samples: int) -> list[str]:
-    """Load calibration texts."""
+def load_calibration_data(dataset_path: str, tokenizer, num_samples: int,
+                          seqlen: int = 2048) -> list[str]:
+    """Load calibration texts and pre-tokenize to the format AWQ expects.
+
+    AWQ internally concatenates all texts, tokenizes, then splits into seqlen chunks.
+    We need to provide enough text to fill num_samples * seqlen tokens.
+    """
     if dataset_path and Path(dataset_path).exists():
         texts = []
         with open(dataset_path, encoding="utf-8") as f:
@@ -36,13 +41,13 @@ def load_calibration_data(dataset_path: str, num_samples: int) -> list[str]:
                     continue
                 d = json.loads(line)
                 texts.append(d["prompt"])
-                if len(texts) >= num_samples:
+                if len(texts) >= num_samples * 4:  # load extra to ensure enough tokens
                     break
         return texts
     else:
         from datasets import load_dataset
         ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-        return [t for t in ds["text"] if len(t.strip()) > 100][:num_samples]
+        return [t for t in ds["text"] if len(t.strip()) > 100][:num_samples * 4]
 
 
 def main():
@@ -73,8 +78,8 @@ def main():
     print(f"Loading tokenizer from {args.model}...", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
 
-    print(f"Loading calibration data ({args.num_samples} samples)...", flush=True)
-    calib_data = load_calibration_data(args.dataset, args.num_samples)
+    print(f"Loading calibration data...", flush=True)
+    calib_data = load_calibration_data(args.dataset, tokenizer, args.num_samples)
     print(f"  Got {len(calib_data)} calibration texts", flush=True)
 
     quant_config = {
@@ -85,7 +90,8 @@ def main():
     }
 
     print(f"Quantizing to {args.bits}-bit AWQ (group_size={args.group_size})...", flush=True)
-    model.quantize(tokenizer, quant_config=quant_config, calib_data=calib_data)
+    model.quantize(tokenizer, quant_config=quant_config, calib_data=calib_data,
+                   n_samples=args.num_samples, seqlen=2048)
 
     print(f"Saving AWQ model to {args.output}...", flush=True)
     model.save_quantized(args.output)
