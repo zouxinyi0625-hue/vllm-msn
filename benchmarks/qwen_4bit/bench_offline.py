@@ -34,6 +34,7 @@ DEFAULT_OUT_DIR = Path("bench_results")
 MODELS = {
     "baseline": "Qwen/Qwen3-4B-Instruct-2507",
     "4bit": "Xinyi0625/train_maiprofile4b_w4",
+    "4bit-gptq": "./Qwen3-4B-GPTQ-Int4",
 }
 
 CSV_FIELDS = [
@@ -208,6 +209,9 @@ def run_one_config(*, scenario: str, cfg: dict, model_tag: str, model: str,
         gpu_memory_utilization=cfg["gpu_mem_util"],
         seed=0,
     )
+    # Enable GPTQ quantization for gptq models
+    if "gptq" in model_tag.lower():
+        llm_kwargs["quantization"] = "gptq"
 
     t_engine = time.time()
     llm = LLM(**llm_kwargs)
