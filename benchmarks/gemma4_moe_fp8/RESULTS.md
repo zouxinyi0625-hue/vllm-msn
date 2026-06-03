@@ -5,7 +5,7 @@
 
   - NVIDIA A100 80GB (offline / local service)
   - NVIDIA A100 40GB (online service) 
-- **Dataset**: sc1_delta_v2.jsonl, 1000 prompts
+- **Dataset**: sc1_delta_v2.jsonl, 1000 prompts, avg input len ≈ 4358 tokens, avg output len ≈ 1290 tokens
 - **Data source**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/sc1_delta_v2.jsonl?property=info
 - **vLLM version**: 0.21.1rc1.dev270+g6cbe448ee (built from source, with MTP speculative decoding support)
 
@@ -48,23 +48,23 @@
 
 **Full report**: https://www.cosmos09.osdinfra.net/cosmos/MSN.DnI/shares/users/zxy/data/mai_profile/all_runs_80.csv?property=info
 
-| Exp | Label | out tok/s | ±σ | vs E001 |
-|-----|-------|:---------:|:--:|:-------:|
-| E001 | BF16 baseline | 646.7 | 19.8 | 1.00× |
-| E002 | +FP8 weights | 1090.2 | 69.8 | 1.69× |
-| E003 | BF16 + CUDA graphs | 965.4 | 6.2 | 1.49× |
-| E004 | +CUDA graphs | 1432.7 | 19.1 | 2.22× |
-| E005 | +MTP k=5 | 1967.0 | 17.8 | 3.04× |
-| E006 | +text-only | 2017.3 | 17.7 | 3.12× |
-| E007 | batch mns=64 | 1859.3 | 10.1 | 2.88× |
-| E008 | batch mns=192 | 1982.6 | 25.9 | 3.07× |
-| E009 | batch mns=256 | 1998.2 | 7.6 | 3.09× |
-| E010 | gpu_mem=0.80 | 1938.8 | 19.3 | 3.00× |
-| E011 | gpu_mem=0.95 | **2020.1** | 17.7 | **3.12×** |
-| E012 | no MTP (isolate) | 1465.4 | 9.3 | 2.27× |
-| E013 | no CG (isolate) | 1815.9 | 75.2 | 2.81× |
-| E014 | BF16 weights (isolate) | 1840.9 | 18.4 | 2.85× |
-| E015 | BF16 ref (text-only) | 721.0 | 35.3 | 1.11× |
+| Exp | Label | input tok/s | out tok/s | ±σ | vs E001 |
+|-----|-------|:-----------:|:---------:|:--:|:-------:|
+| E001 | BF16 baseline | 2104 | 646.7 | 19.8 | 1.00× |
+| E002 | +FP8 weights | 3646 | 1090.2 | 69.8 | 1.69× |
+| E003 | BF16 + CUDA graphs | 3164 | 965.4 | 6.2 | 1.49× |
+| E004 | +CUDA graphs | 4842 | 1432.7 | 19.1 | 2.22× |
+| E005 | +MTP k=5 | 6651 | 1967.0 | 17.8 | 3.04× |
+| E006 | +text-only | 6856 | 2017.3 | 17.7 | 3.12× |
+| E007 | batch mns=64 | 6337 | 1859.3 | 10.1 | 2.88× |
+| E008 | batch mns=192 | 6730 | 1982.6 | 25.9 | 3.07× |
+| E009 | batch mns=256 | 6701 | 1998.2 | 7.6 | 3.09× |
+| E010 | gpu_mem=0.80 | 6582 | 1938.8 | 19.3 | 3.00× |
+| E011 | gpu_mem=0.95 | 6877 | **2020.1** | 17.7 | **3.12×** |
+| E012 | no MTP (isolate) | 4967 | 1465.4 | 9.3 | 2.27× |
+| E013 | no CG (isolate) | 6146 | 1815.9 | 75.2 | 2.81× |
+| E014 | BF16 weights (isolate) | 6028 | 1840.9 | 18.4 | 2.85× |
+| E015 | BF16 ref (text-only) | 2353 | 721.0 | 35.3 | 1.11× |
 
 **Best**: E011 — **2020 output tok/s** (3.12× vs BF16 baseline)
 
@@ -82,19 +82,19 @@ _Offline `vllm.LLM` engine, scenario sc1, 1000 prompts, 2 reps._
 
 _BF16 experiments (E001, E003, E014, E015) OOM at 40GB._
 
-| Exp | Label | out tok/s | ±σ | vs E002 | vs 80GB |
-|-----|-------|:---------:|:--:|:-------:|:-------:|
-| E002 | +FP8 weights | 326.2 | 4.5 | 1.00× | 0.30× |
-| E004 | +CUDA graphs | 687.8 | 0.7 | 2.11× | 0.48× |
-| E005 | +MTP k=5 | 1244.7 | 0.5 | 3.82× | 0.63× |
-| E006 | +text-only | 1509.2 | 4.5 | 4.63× | 0.75× |
-| E007 | batch mns=64 | 1503.3 | 2.7 | 4.61× | 0.81× |
-| E008 | batch mns=192 | 1489.3 | 1.5 | 4.57× | 0.75× |
-| E009 | batch mns=256 | 1477.6 | 0.7 | 4.53× | 0.74× |
-| E010 | gpu_mem=0.80 | 1499.7 | 0.4 | 4.60× | 0.77× |
-| E011 | gpu_mem=0.95 | **1517.7** | 6.8 | **4.65×** | 0.75× |
-| E012 | no MTP (isolate) | 843.8 | 5.1 | 2.59× | 0.58× |
-| E013 | no CG (isolate) | 1219.4 | 1.0 | 3.74× | 0.67× |
+| Exp | Label | input tok/s | out tok/s | ±σ | vs E002 | vs 80GB |
+|-----|-------|:-----------:|:---------:|:--:|:-------:|:-------:|
+| E002 | +FP8 weights | 1105 | 326.2 | 4.5 | 1.00× | 0.30× |
+| E004 | +CUDA graphs | 2329 | 687.8 | 0.7 | 2.11× | 0.48× |
+| E005 | +MTP k=5 | 4218 | 1244.7 | 0.5 | 3.82× | 0.63× |
+| E006 | +text-only | 5074 | 1509.2 | 4.5 | 4.63× | 0.75× |
+| E007 | batch mns=64 | 5050 | 1503.3 | 2.7 | 4.61× | 0.81× |
+| E008 | batch mns=192 | 4981 | 1489.3 | 1.5 | 4.57× | 0.75× |
+| E009 | batch mns=256 | 4927 | 1477.6 | 0.7 | 4.53× | 0.74× |
+| E010 | gpu_mem=0.80 | 5118 | 1499.7 | 0.4 | 4.60× | 0.77× |
+| E011 | gpu_mem=0.95 | 5058 | **1517.7** | 6.8 | **4.65×** | 0.75× |
+| E012 | no MTP (isolate) | 2850 | 843.8 | 5.1 | 2.59× | 0.58× |
+| E013 | no CG (isolate) | 4120 | 1219.4 | 1.0 | 3.74× | 0.67× |
 
 **Best**: E011 — **1518 output tok/s** (75% of 80GB performance)
 
