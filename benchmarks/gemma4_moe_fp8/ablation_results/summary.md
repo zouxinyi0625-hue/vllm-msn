@@ -78,23 +78,23 @@ Estimated contribution of each optimization layer, from ablation pairs:
 
 _Uses `vllm.LLM` offline engine (bench_ablation.py), scenario sc1, 1000 prompts._
 
-| Exp | Label | out tok/s (mean) | ±σ | reps | gpu_mem |
-|-----|-------|:----------------:|:--:|:----:|:-------:|
-| E001 | BF16 baseline — matches REPRODUCE_PRODSHAPE sc1 | 646.7 | 19.8 | 5 | 0.9 |
-| E002 | +FP8 weights (kv cache stays BF16 / auto) | 1090.2 | 69.8 | 5 | 0.9 |
-| E003 | BF16 + CUDA graphs (enforce_eager=False) | 965.4 | 6.2 | 5 | 0.9 |
-| E004 | +CUDA graphs (enforce_eager=False) | 1432.7 | 19.1 | 5 | 0.9 |
-| E005 | +MTP speculative decoding (k=5) | 1967.0 | 17.8 | 6 | 0.9 |
-| E006 | +text-only model (vision stripped) | 2017.3 | 17.7 | 6 | 0.9 |
-| E007 | batch sweep: mns=64 | 1859.3 | 10.1 | 5 | 0.9 |
-| E008 | batch sweep: mns=192 | 1982.6 | 25.9 | 5 | 0.9 |
-| E009 | batch sweep: mns=256 | 1998.2 | 7.6 | 5 | 0.9 |
-| E010 | gpu_mem sweep: 0.80 | 1938.8 | 19.3 | 5 | 0.8 |
-| E011 | gpu_mem sweep: 0.95 | 2020.1 | 17.7 | 5 | 0.95 |
-| E012 | no MTP at optimal (isolates MTP contribution) | 1465.4 | 9.3 | 5 | 0.9 |
-| E013 | no CUDA graphs at optimal (isolates CG contribution) | 1815.9 | 75.2 | 5 | 0.9 |
-| E014 | BF16 weights at optimal config (isolates FP8 weight contribution) | 1840.9 | 18.4 | 5 | 0.9 |
-| E015 | BF16 reference (text-only, no opts) | 721.0 | 35.3 | 5 | 0.9 |
+| Exp | Label | avg in len | avg out len | prompt tok/s (mean) | out tok/s (mean) | ±σ | reps | gpu_mem |
+|-----|-------|:----------:|:-----------:|:-------------------:|:----------------:|:--:|:----:|:-------:|
+| E001 | BF16 baseline — matches REPRODUCE_PRODSHAPE sc1 | 4358 | 1340 | 2103.8 | 646.7 | 19.8 | 5 | 0.9 |
+| E002 | +FP8 weights (kv cache stays BF16 / auto) | 4358 | 1303 | 3645.6 | 1090.2 | 69.8 | 5 | 0.9 |
+| E003 | BF16 + CUDA graphs (enforce_eager=False) | 4358 | 1330 | 3163.6 | 965.4 | 6.2 | 5 | 0.9 |
+| E004 | +CUDA graphs (enforce_eager=False) | 4358 | 1290 | 4842.1 | 1432.7 | 19.1 | 5 | 0.9 |
+| E005 | +MTP speculative decoding (k=5) | 4358 | 1289 | 6651.0 | 1967.0 | 17.8 | 6 | 0.9 |
+| E006 | +text-only model (vision stripped) | 4358 | 1282 | 6855.8 | 2017.3 | 17.7 | 6 | 0.9 |
+| E007 | batch sweep: mns=64 | 4358 | 1279 | 6337.0 | 1859.3 | 10.1 | 5 | 0.9 |
+| E008 | batch sweep: mns=192 | 4358 | 1284 | 6729.9 | 1982.6 | 25.9 | 5 | 0.9 |
+| E009 | batch sweep: mns=256 | 4358 | 1300 | 6700.9 | 1998.2 | 7.6 | 5 | 0.9 |
+| E010 | gpu_mem sweep: 0.80 | 4358 | 1284 | 6582.2 | 1938.8 | 19.3 | 5 | 0.8 |
+| E011 | gpu_mem sweep: 0.95 | 4358 | 1280 | 6876.7 | 2020.1 | 17.7 | 5 | 0.95 |
+| E012 | no MTP at optimal (isolates MTP contribution) | 4358 | 1286 | 4967.1 | 1465.4 | 9.3 | 5 | 0.9 |
+| E013 | no CUDA graphs at optimal (isolates CG contribution) | 4358 | 1288 | 6146.0 | 1815.9 | 75.2 | 5 | 0.9 |
+| E014 | BF16 weights at optimal config (isolates FP8 weight contribution) | 4358 | 1331 | 6028.4 | 1840.9 | 18.4 | 5 | 0.9 |
+| E015 | BF16 reference (text-only, no opts) | 4358 | 1336 | 2353.1 | 721.0 | 35.3 | 5 | 0.9 |
 
 **Best**: E011 (gpu_mem=0.95) — 2020.1 output tok/s (3.12× vs BF16 baseline)
 
@@ -104,19 +104,19 @@ _Uses `vllm.LLM` offline engine (bench_ablation.py), scenario sc1, 1000 prompts.
 
 _Uses `vllm.LLM` offline engine (bench_ablation.py), scenario sc1, 1000 prompts. Skips BF16 exps (OOM)._
 
-| Exp | Label | out tok/s (mean) | ±σ | reps |
-|-----|-------|:----------------:|:--:|:----:|
-| E002 | +FP8 weights (kv cache stays BF16 / auto) | 326.2 | 4.5 | 2 |
-| E004 | +CUDA graphs (enforce_eager=False) | 687.8 | 0.7 | 2 |
-| E005 | +MTP speculative decoding (k=5) | 1244.7 | 0.5 | 2 |
-| E006 | +text-only model (vision stripped) | 1509.2 | 4.5 | 2 |
-| E007 | batch sweep: mns=64 | 1503.3 | 2.7 | 2 |
-| E008 | batch sweep: mns=192 | 1489.3 | 1.5 | 2 |
-| E009 | batch sweep: mns=256 | 1477.6 | 0.7 | 2 |
-| E010 | gpu_mem sweep: 0.80 | 1499.7 | 0.4 | 2 |
-| E011 | gpu_mem sweep: 0.95 | 1517.7 | 6.8 | 2 |
-| E012 | no MTP at optimal (isolates MTP contribution) | 843.8 | 5.1 | 2 |
-| E013 | no CUDA graphs at optimal (isolates CG contribution) | 1219.4 | 1.0 | 2 |
+| Exp | Label | avg in len | avg out len | prompt tok/s (mean) | out tok/s (mean) | ±σ | reps |
+|-----|-------|:----------:|:-----------:|:-------------------:|:----------------:|:--:|:----:|
+| E002 | +FP8 weights (kv cache stays BF16 / auto) | 4358 | 1287 | 1105.1 | 326.2 | 4.5 | 2 |
+| E004 | +CUDA graphs (enforce_eager=False) | 4358 | 1287 | 2328.9 | 687.8 | 0.7 | 2 |
+| E005 | +MTP speculative decoding (k=5) | 4358 | 1286 | 4217.5 | 1244.7 | 0.5 | 2 |
+| E006 | +text-only model (vision stripped) | 4358 | 1296 | 5074.1 | 1509.2 | 4.5 | 2 |
+| E007 | batch sweep: mns=64 | 4358 | 1297 | 5050.0 | 1503.3 | 2.7 | 2 |
+| E008 | batch sweep: mns=192 | 4358 | 1303 | 4981.0 | 1489.3 | 1.5 | 2 |
+| E009 | batch sweep: mns=256 | 4358 | 1307 | 4927.1 | 1477.6 | 0.7 | 2 |
+| E010 | gpu_mem sweep: 0.80 | 4358 | 1277 | 5117.7 | 1499.7 | 0.4 | 2 |
+| E011 | gpu_mem sweep: 0.95 | 4358 | 1308 | 5057.5 | 1517.7 | 6.8 | 2 |
+| E012 | no MTP at optimal (isolates MTP contribution) | 4358 | 1291 | 2849.5 | 843.8 | 5.1 | 2 |
+| E013 | no CUDA graphs at optimal (isolates CG contribution) | 4358 | 1290 | 4120.0 | 1219.4 | 1.0 | 2 |
 
 **Best**: E011 (gpu_mem=0.95) — 1517.7 output tok/s
 **Degradation vs 80GB (0.9)**: E006 best-comparable: 1509.2 vs 2017.3 = 0.75× (25% slower at 40GB)
