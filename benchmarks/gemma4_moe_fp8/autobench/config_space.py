@@ -18,7 +18,6 @@ PARAM_SPACE = {
     "max_num_batched_tokens": [8192, 16384, 24576, 32768],
     "max_model_len": [16384, 24576],
     "spec_tokens": [3, 5, 7, 9],
-    "VLLM_MOE_USE_DEEP_GEMM": ["0", "1"],
     "VLLM_USE_FUSED_MOE_GROUPED_TOPK": ["0", "1"],
     "VLLM_FLASHINFER_MOE_BACKEND": ["throughput", "latency"],
     "VLLM_HUMMING_MOE_GEMM_TYPE": ["indexed", "grouped", "auto"],
@@ -34,7 +33,6 @@ FIXED_PARAMS = {
 
 # Parameters that are env vars (set before vllm import)
 ENV_VAR_PARAMS = {
-    "VLLM_MOE_USE_DEEP_GEMM",
     "VLLM_USE_FUSED_MOE_GROUPED_TOPK",
     "VLLM_FLASHINFER_MOE_BACKEND",
     "VLLM_HUMMING_MOE_GEMM_TYPE",
@@ -44,7 +42,7 @@ ENV_VAR_PARAMS = {
 A100_FIXED_ENV = {
     "VLLM_USE_FLASHINFER_MOE_FP8": "0",
     "VLLM_USE_FLASHINFER_SAMPLER": "0",
-    "VLLM_ATTENTION_BACKEND": "FLASH_ATTN",
+    "VLLM_MOE_USE_DEEP_GEMM": "0",
 }
 
 # E011 baseline config (current best: 2020 output_tps)
@@ -54,7 +52,6 @@ BASELINE_CONFIG = {
     "max_num_batched_tokens": 16384,
     "max_model_len": 24576,
     "spec_tokens": 5,
-    "VLLM_MOE_USE_DEEP_GEMM": "1",
     "VLLM_USE_FUSED_MOE_GROUPED_TOPK": "1",
     "VLLM_FLASHINFER_MOE_BACKEND": "throughput",
     "VLLM_HUMMING_MOE_GEMM_TYPE": "auto",
@@ -125,9 +122,6 @@ def config_summary(cfg: dict) -> str:
     mml = cfg.get("max_model_len", 24576)
     if mml != 24576:
         parts.append(f"mml={mml}")
-    dg = cfg.get("VLLM_MOE_USE_DEEP_GEMM", "1")
-    if dg == "0":
-        parts.append("no-DeepGEMM")
     ftk = cfg.get("VLLM_USE_FUSED_MOE_GROUPED_TOPK", "1")
     if ftk == "0":
         parts.append("no-FusedTopK")
@@ -219,7 +213,6 @@ def _initial_exploration(n: int) -> list[dict]:
     """First round: vary one parameter at a time from baseline."""
     configs = []
     variations = [
-        {"VLLM_MOE_USE_DEEP_GEMM": "0"},
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped"},
         {"VLLM_FLASHINFER_MOE_BACKEND": "latency"},
         {"spec_tokens": 7},

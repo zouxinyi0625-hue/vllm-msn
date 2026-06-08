@@ -124,7 +124,7 @@ def build_job_command(
         result_name = f"{job_ts}_exp{i}_{slug}"
 
         env_exports = []
-        for key in ["VLLM_MOE_USE_DEEP_GEMM", "VLLM_USE_FUSED_MOE_GROUPED_TOPK",
+        for key in ["VLLM_USE_FUSED_MOE_GROUPED_TOPK",
                     "VLLM_FLASHINFER_MOE_BACKEND", "VLLM_HUMMING_MOE_GEMM_TYPE"]:
             if key in config:
                 env_exports.append(f'export {key}="{config[key]}"')
@@ -192,7 +192,7 @@ du -sh {LOCAL_MODEL_DIR}/
 # 4. Fixed env vars for A100
 export VLLM_USE_FLASHINFER_MOE_FP8=0
 export VLLM_USE_FLASHINFER_SAMPLER=0
-export VLLM_ATTENTION_BACKEND=FLASH_ATTN
+export VLLM_MOE_USE_DEEP_GEMM=0
 export GEMMA4_TEXT_ONLY_MODEL_PATH="{LOCAL_MODEL_DIR}/text_only"
 export GEMMA4_ASSISTANT_MODEL_PATH="{LOCAL_MODEL_DIR}/assistant"
 
