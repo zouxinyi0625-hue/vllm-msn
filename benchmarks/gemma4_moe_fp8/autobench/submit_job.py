@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime
@@ -65,12 +66,15 @@ SSH_PUB_KEY = (
     "H5PB6S6xLBLD3Ybm+tHW/vvT6d/qjd3wYvg2dAuGwc/Mw== xinyizou@microsoft.com"
 )
 
-ENVIRONMENT = "azureml:vllm_gemma4:2"
-INSTANCE_TYPE = "Singularity.ND24am_A100_v4"
+ENVIRONMENT = "azureml:vllm_gemma4:3"
+INSTANCE_TYPE = "Singularity.ND12am_A100_v4"
 DATASTORE_PATH = "azureml://datastores/adls_msn_dni_09_rankfun/paths/"
 
 GIT_REPO = "https://github.com/xinyiZou/vllm-msn.git"
 GIT_BRANCH = "zxy_dev_autobench"
+
+HF_MODEL_REPO = "Xinyi0625/Gemma-4-26B-A4B-it-deploy"
+LOCAL_MODEL_DIR = "/tmp/models/gemma4"
 
 MOUNT_RESULTS_PATH = "shares/users/zxy/autobench/results"
 MOUNT_DATA_PATH = "shares/users/zxy/autobench/data"
@@ -175,21 +179,28 @@ mkdir -p datasets
 cp "$MOUNT/{MOUNT_DATA_PATH}/sc1_delta_v2.jsonl" datasets/
 echo "Data copied to local disk ($(wc -l < datasets/sc1_delta_v2.jsonl) lines)"
 
-# 3. Fixed env vars for A100
+# 3. Download model from HuggingFace (token injected via AML env vars)
+echo "Downloading model from HuggingFace..."
+huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential
+huggingface-cli download {HF_MODEL_REPO} --local-dir {LOCAL_MODEL_DIR} --local-dir-use-symlinks False
+echo "Model downloaded to {LOCAL_MODEL_DIR}"
+ls {LOCAL_MODEL_DIR}/
+
+# 4. Fixed env vars for A100
 export VLLM_USE_FLASHINFER_MOE_FP8=0
 export VLLM_USE_FLASHINFER_SAMPLER=0
 export VLLM_ATTENTION_BACKEND=FLASH_ATTN
-export GEMMA4_TEXT_ONLY_MODEL_PATH="${{_ModelDataPath_}}/text_only"
-export GEMMA4_ASSISTANT_MODEL_PATH="${{_ModelDataPath_}}/assistant"
+export GEMMA4_TEXT_ONLY_MODEL_PATH="{LOCAL_MODEL_DIR}/text_only"
+export GEMMA4_ASSISTANT_MODEL_PATH="{LOCAL_MODEL_DIR}/assistant"
 
-# 4. Prepare results directory on mount
+# 5. Prepare results directory on mount
 RESULTS_DIR="$MOUNT/{MOUNT_RESULTS_PATH}/{job_ts}"
 mkdir -p "$RESULTS_DIR"
 
-# 5. Run experiments sequentially
+# 6. Run experiments sequentially
 {experiments_str}
 
-# 6. Copy aggregated results.tsv to mount (append to master + keep per-job copy)
+# 7. Copy aggregated results.tsv to mount (append to master + keep per-job copy)
 if [ -f results.tsv ]; then
     cp results.tsv "$RESULTS_DIR/results.tsv"
     # Also append to master results file
@@ -222,10 +233,18 @@ def submit_experiment(
     branch: str = GIT_BRANCH,
     display_name: str | None = None,
     ml_client: MLClient | None = None,
+    hf_token: str | None = None,
 ) -> str:
     """Submit one job running multiple experiments. Returns job name (ID)."""
     if ml_client is None:
         ml_client = get_ml_client()
+
+    if hf_token is None:
+        hf_token = os.environ.get("HF_TOKEN", "")
+    if not hf_token:
+        raise ValueError(
+            "HF_TOKEN not set. Set it via environment variable or pass hf_token=."
+        )
 
     from config_space import config_summary
     job_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -254,6 +273,7 @@ def submit_experiment(
         },
         environment_variables={
             "_AZUREML_SINGULARITY_JOB_UAI": UAI_RESOURCE_ID,
+            "HF_TOKEN": hf_token,
         },
         services={
             "ssh": SshJobService(ssh_public_keys=SSH_PUB_KEY, nodes="all"),
