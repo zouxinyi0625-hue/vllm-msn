@@ -70,7 +70,7 @@ ENVIRONMENT = "azureml:vllm_gemma4:3"
 INSTANCE_TYPE = "Singularity.ND12am_A100_v4"
 DATASTORE_PATH = "azureml://datastores/adls_msn_dni_09_rankfun/paths/"
 
-GIT_REPO = "https://github.com/xinyiZou/vllm-msn.git"
+GIT_REPO = "https://github.com/zouxinyi0625-hue/vllm-msn.git"
 GIT_BRANCH = "zxy_dev_autobench"
 
 HF_MODEL_REPO = "Xinyi0625/Gemma-4-26B-A4B-it-deploy"
