@@ -46,15 +46,14 @@ A100_FIXED_ENV = {
 }
 
 # E011 baseline config (current best: 2020 output_tps)
+# Only sets params that were explicitly used in original ablation.
+# MoE env vars left unset = vLLM defaults.
 BASELINE_CONFIG = {
     **FIXED_PARAMS,
     "max_num_seqs": 128,
     "max_num_batched_tokens": 16384,
     "max_model_len": 24576,
     "spec_tokens": 5,
-    "VLLM_USE_FUSED_MOE_GROUPED_TOPK": "1",
-    "VLLM_FLASHINFER_MOE_BACKEND": "throughput",
-    "VLLM_HUMMING_MOE_GEMM_TYPE": "auto",
 }
 
 
@@ -122,14 +121,14 @@ def config_summary(cfg: dict) -> str:
     mml = cfg.get("max_model_len", 24576)
     if mml != 24576:
         parts.append(f"mml={mml}")
-    ftk = cfg.get("VLLM_USE_FUSED_MOE_GROUPED_TOPK", "1")
-    if ftk == "0":
-        parts.append("no-FusedTopK")
-    backend = cfg.get("VLLM_FLASHINFER_MOE_BACKEND", "throughput")
-    if backend != "throughput":
+    ftk = cfg.get("VLLM_USE_FUSED_MOE_GROUPED_TOPK")
+    if ftk is not None:
+        parts.append(f"FusedTopK={ftk}")
+    backend = cfg.get("VLLM_FLASHINFER_MOE_BACKEND")
+    if backend is not None:
         parts.append(f"moe-{backend}")
-    humming = cfg.get("VLLM_HUMMING_MOE_GEMM_TYPE", "auto")
-    if humming != "auto":
+    humming = cfg.get("VLLM_HUMMING_MOE_GEMM_TYPE")
+    if humming is not None:
         parts.append(f"humming-{humming}")
     return " | ".join(parts)
 

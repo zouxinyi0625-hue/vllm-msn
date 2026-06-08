@@ -6,8 +6,5 @@
     "spec_tokens": 5,
     "quantization": "fp8",
     "kv_cache_dtype": "auto",
-    "enforce_eager": false,
-    "VLLM_USE_FUSED_MOE_GROUPED_TOPK": "1",
-    "VLLM_FLASHINFER_MOE_BACKEND": "throughput",
-    "VLLM_HUMMING_MOE_GEMM_TYPE": "auto"
+    "enforce_eager": false
 }
