@@ -110,8 +110,8 @@ def main():
                     help="Number of experiments per job (for --round/--suggest)")
     ap.add_argument("--prompts", type=int, default=200, help="Prompts per experiment")
     ap.add_argument("--reps", type=int, default=2, help="Reps per experiment")
-    ap.add_argument("--branch", default="zxy_dev",
-                    help="Git branch for the job to clone (default: zxy_dev)")
+    ap.add_argument("--branch", default="zxy_dev_autobench",
+                    help="Git branch for the job to clone (default: zxy_dev_autobench)")
     ap.add_argument("--results-tsv", type=Path, default=None,
                     help="Path to results.tsv (local or mounted)")
     ap.add_argument("--dry-run", action="store_true",

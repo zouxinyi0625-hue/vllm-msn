@@ -70,7 +70,7 @@ INSTANCE_TYPE = "Singularity.ND24am_A100_v4"
 DATASTORE_PATH = "azureml://datastores/adls_msn_dni_09_rankfun/paths/"
 
 GIT_REPO = "https://github.com/xinyiZou/vllm-msn.git"
-GIT_BRANCH = "zxy_dev"
+GIT_BRANCH = "zxy_dev_autobench"
 
 MOUNT_RESULTS_PATH = "shares/users/zxy/autobench/results"
 MOUNT_DATA_PATH = "shares/users/zxy/autobench/data"
