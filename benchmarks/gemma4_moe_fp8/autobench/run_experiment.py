@@ -243,8 +243,8 @@ def save_result(result: dict):
 def main():
     ap = argparse.ArgumentParser(description="Run single autobench experiment")
     ap.add_argument("--config", required=True, help="Path to config JSON file")
-    ap.add_argument("--prompts", type=int, default=200,
-                    help="Number of prompts (default: 200 for fast iteration)")
+    ap.add_argument("--prompts", type=int, default=1000,
+                    help="Number of prompts (default: 1000, matches sc1 scenario)")
     ap.add_argument("--reps", type=int, default=2, help="Repetitions (default: 2)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Validate config and print args without running")

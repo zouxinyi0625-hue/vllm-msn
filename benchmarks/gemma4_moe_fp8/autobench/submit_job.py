@@ -106,12 +106,19 @@ def make_resource_config() -> JobResourceConfiguration:
 
 def build_job_command(
     configs: list[dict],
-    prompts: int = 200,
+    prompts: int = 1000,
     reps: int = 2,
     branch: str = GIT_BRANCH,
+    job_id: str = "",
 ) -> str:
-    """Build bash command that runs multiple experiments then sleeps."""
+    """Build bash command that runs multiple experiments then sleeps.
+
+    Each experiment is isolated: failure in one does not affect the next.
+    Results are tagged with job_id to prevent conflicts from parallel jobs.
+    """
     job_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not job_id:
+        job_id = job_ts
 
     # Build per-experiment run blocks
     experiment_blocks = []
@@ -119,39 +126,52 @@ def build_job_command(
         config_json = json.dumps(config, indent=2)
         from config_space import config_summary
         summary = config_summary(config)
-        # Unique result name: date_expN_summary-slug
+        # Unique result name: jobid_expN_summary-slug (no conflicts between parallel jobs)
         slug = summary.replace(" | ", "_").replace(" ", "")[:50]
-        result_name = f"{job_ts}_exp{i}_{slug}"
+        result_name = f"{job_id}_exp{i}_{slug}"
 
         env_exports = []
         for key in ["VLLM_HUMMING_MOE_GEMM_TYPE"]:
             if key in config:
                 env_exports.append(f'export {key}="{config[key]}"')
+            else:
+                env_exports.append(f'unset {key} 2>/dev/null || true')
         env_block = "\n".join(env_exports)
 
         block = f"""
 echo ""
 echo "{'='*60}"
-echo "  Experiment {i}/{len(configs)}: {summary}"
+echo "  [{job_id}] Experiment {i}/{len(configs)}: {summary}"
 echo "{'='*60}"
-date
+echo "  Start time: $(date)"
+echo "  Prompts: {prompts}, Reps: {reps}"
 
-# Set MoE env vars for this experiment
+# Set/unset MoE env vars for this experiment
 {env_block}
 
 cat > /tmp/config_{i}.json << 'CFGEOF'
 {config_json}
 CFGEOF
 
-python run_experiment.py --config /tmp/config_{i}.json --prompts {prompts} --reps {reps} \\
-    2>&1 | tee "/tmp/run_{i}.log" || echo "EXPERIMENT {i} FAILED (exit $?)"
+# Run experiment in subshell — failure does NOT stop subsequent experiments
+(
+    python run_experiment.py --config /tmp/config_{i}.json --prompts {prompts} --reps {reps} \\
+        2>&1 | tee "/tmp/run_{i}.log"
+) || echo "[WARN] EXPERIMENT {i} FAILED (exit $?), continuing..."
 
-# Copy results with unique names (never overwrite)
+echo "  Experiment {i} finished at $(date)"
+
+# Copy results with unique names (never overwrite, tagged with job_id)
 if [ -d run_results ]; then
     for f in run_results/*.json; do
-        [ -f "$f" ] && cp "$f" "$RESULTS_DIR/{result_name}.json" 2>/dev/null || true
+        if [ -f "$f" ]; then
+            cp "$f" "$RESULTS_DIR/{result_name}.json" 2>/dev/null || true
+            echo "  Result saved: {result_name}.json"
+        fi
     done
     rm -rf run_results
+else
+    echo "  [WARN] No run_results/ directory — experiment likely crashed"
 fi
 """
         experiment_blocks.append(block)
@@ -159,66 +179,101 @@ fi
     experiments_str = "\n".join(experiment_blocks)
 
     cmd = f"""#!/bin/bash
-# Autobench Job — {job_ts} — {len(configs)} experiment(s)
+# Autobench Job — {job_id} — {len(configs)} experiment(s)
 # Branch: {branch}
+# Prompts: {prompts}, Reps: {reps} (matches sc1 ablation settings)
 # Machine stays alive via sleep infinity at end (SSH in to debug)
 
+set +e  # Do NOT exit on error — we want all experiments to run
+
 echo "=== Autobench Job Start ==="
-echo "Timestamp: {job_ts}"
+echo "Job ID: {job_id}"
+echo "Timestamp: $(date)"
 echo "Experiments: {len(configs)}"
-date
+echo "Branch: {branch}"
+echo "Prompts: {prompts}, Reps: {reps}"
+echo ""
 
 # 1. Clone code on the experiment branch
+echo "[Step 1/6] Cloning code from {branch}..."
 git clone --branch {branch} --depth 1 {GIT_REPO} /tmp/vllm-msn
 cd /tmp/vllm-msn/benchmarks/gemma4_moe_fp8/autobench
+echo "  Code cloned at $(date)"
 
 # 2. Copy data from mount to local disk (mount I/O is slow)
+echo "[Step 2/6] Copying dataset to local disk..."
 MOUNT=$AZURE_ML_INPUT_msndni
 mkdir -p datasets
 cp "$MOUNT/{MOUNT_DATA_PATH}/sc1_delta_v2.jsonl" datasets/
-echo "Data copied to local disk ($(wc -l < datasets/sc1_delta_v2.jsonl) lines)"
+echo "  Data copied: $(wc -l < datasets/sc1_delta_v2.jsonl) lines"
 
 # 3. Download model from HuggingFace (token injected via AML env vars)
-echo "Downloading model from HuggingFace: {HF_MODEL_REPO} -> {LOCAL_MODEL_DIR}"
-echo "This may take 10-20 minutes for ~14GB model..."
-date
+echo "[Step 3/6] Downloading model from HuggingFace..."
+echo "  Repo: {HF_MODEL_REPO}"
+echo "  Target: {LOCAL_MODEL_DIR}"
+echo "  Start: $(date)"
 hf download {HF_MODEL_REPO} --local-dir {LOCAL_MODEL_DIR} --token "$HF_TOKEN"
-echo "Model download complete at $(date)"
-echo "Model contents:"
+echo "  Model download complete at $(date)"
+echo "  Contents:"
 ls -lh {LOCAL_MODEL_DIR}/
 du -sh {LOCAL_MODEL_DIR}/
 
 # 4. Fixed env vars for A100
+echo "[Step 4/6] Setting environment variables..."
 export VLLM_USE_FLASHINFER_MOE_FP8=0
 export VLLM_USE_FLASHINFER_SAMPLER=0
 export VLLM_MOE_USE_DEEP_GEMM=0
 export GEMMA4_TEXT_ONLY_MODEL_PATH="{LOCAL_MODEL_DIR}/text_only"
 export GEMMA4_ASSISTANT_MODEL_PATH="{LOCAL_MODEL_DIR}/assistant"
+echo "  GEMMA4_TEXT_ONLY_MODEL_PATH=$GEMMA4_TEXT_ONLY_MODEL_PATH"
+echo "  GEMMA4_ASSISTANT_MODEL_PATH=$GEMMA4_ASSISTANT_MODEL_PATH"
+echo "  VLLM_USE_FLASHINFER_MOE_FP8=$VLLM_USE_FLASHINFER_MOE_FP8"
+echo "  VLLM_MOE_USE_DEEP_GEMM=$VLLM_MOE_USE_DEEP_GEMM"
 
-# 5. Prepare results directory on mount
-RESULTS_DIR="$MOUNT/{MOUNT_RESULTS_PATH}/{job_ts}"
+# 5. Prepare results directory on mount (job-specific subdir prevents conflicts)
+echo "[Step 5/6] Preparing results directory..."
+RESULTS_DIR="$MOUNT/{MOUNT_RESULTS_PATH}/{job_id}"
 mkdir -p "$RESULTS_DIR"
+echo "  Results will be saved to: $RESULTS_DIR/"
 
-# 6. Run experiments sequentially
+# 6. Run experiments sequentially (each isolated — failure won't stop others)
+echo "[Step 6/6] Running {len(configs)} experiment(s)..."
+echo ""
 {experiments_str}
 
-# 7. Copy aggregated results.tsv to mount (append to master + keep per-job copy)
+# 7. Copy aggregated results.tsv to mount
+echo ""
+echo "=== Saving aggregated results ==="
 if [ -f results.tsv ]; then
     cp results.tsv "$RESULTS_DIR/results.tsv"
-    # Also append to master results file
+    echo "  Per-job results.tsv saved"
+    # Append to master results file (use flock to prevent parallel write corruption)
     MASTER_TSV="$MOUNT/{MOUNT_RESULTS_PATH}/results_all.tsv"
-    if [ -f "$MASTER_TSV" ]; then
-        tail -n +2 results.tsv >> "$MASTER_TSV"
+    if command -v flock &>/dev/null; then
+        flock "$MASTER_TSV.lock" bash -c '
+            if [ -f "'"$MASTER_TSV"'" ]; then
+                tail -n +2 results.tsv >> "'"$MASTER_TSV"'"
+            else
+                cp results.tsv "'"$MASTER_TSV"'"
+            fi
+        '
     else
-        cp results.tsv "$MASTER_TSV"
+        if [ -f "$MASTER_TSV" ]; then
+            tail -n +2 results.tsv >> "$MASTER_TSV"
+        else
+            cp results.tsv "$MASTER_TSV"
+        fi
     fi
+    echo "  Master results_all.tsv updated"
+else
+    echo "  [WARN] No results.tsv generated"
 fi
 
 echo ""
 echo "=== All experiments done ==="
-echo "Results saved to: $RESULTS_DIR/"
-echo "Branch: {branch}"
-date
+echo "Job ID: {job_id}"
+echo "Results: $RESULTS_DIR/"
+echo "Finished at: $(date)"
 echo ""
 echo "Machine staying alive (sleep infinity). SSH in to inspect or re-run."
 echo "Cancel the job when done."
@@ -230,14 +285,18 @@ sleep infinity
 
 def submit_experiment(
     configs: list[dict],
-    prompts: int = 200,
+    prompts: int = 1000,
     reps: int = 2,
     branch: str = GIT_BRANCH,
     display_name: str | None = None,
     ml_client: MLClient | None = None,
     hf_token: str | None = None,
 ) -> str:
-    """Submit one job running multiple experiments. Returns job name (ID)."""
+    """Submit one job running multiple experiments. Returns job name (ID).
+
+    Each job gets a unique job_id embedded in result filenames to prevent
+    conflicts when multiple jobs run in parallel.
+    """
     if ml_client is None:
         ml_client = get_ml_client()
 
@@ -258,7 +317,8 @@ def submit_experiment(
         else:
             display_name = f"autobench-{job_ts}-{len(configs)}exps"
 
-    job_cmd = build_job_command(configs, prompts=prompts, reps=reps, branch=branch)
+    job_cmd = build_job_command(configs, prompts=prompts, reps=reps,
+                               branch=branch, job_id=job_ts)
 
     job = command(
         command=job_cmd,
