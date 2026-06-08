@@ -1,0 +1,2 @@
+run_id	output_tps	total_tps	stdev	status	config_summary
+E011_baseline	2020.0	8540.0	15.0	ok	fp8 | CG | MTP-k5 | mns=128 | mem=0.95 | mnbt=16384 | DeepGEMM
