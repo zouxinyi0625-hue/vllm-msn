@@ -180,10 +180,14 @@ cp "$MOUNT/{MOUNT_DATA_PATH}/sc1_delta_v2.jsonl" datasets/
 echo "Data copied to local disk ($(wc -l < datasets/sc1_delta_v2.jsonl) lines)"
 
 # 3. Download model from HuggingFace (token injected via AML env vars)
-echo "Downloading model from HuggingFace..."
+echo "Downloading model from HuggingFace: {HF_MODEL_REPO} -> {LOCAL_MODEL_DIR}"
+echo "This may take 10-20 minutes for ~14GB model..."
+date
 hf download {HF_MODEL_REPO} --local-dir {LOCAL_MODEL_DIR} --token "$HF_TOKEN"
-echo "Model downloaded to {LOCAL_MODEL_DIR}"
-ls {LOCAL_MODEL_DIR}/
+echo "Model download complete at $(date)"
+echo "Model contents:"
+ls -lh {LOCAL_MODEL_DIR}/
+du -sh {LOCAL_MODEL_DIR}/
 
 # 4. Fixed env vars for A100
 export VLLM_USE_FLASHINFER_MOE_FP8=0
