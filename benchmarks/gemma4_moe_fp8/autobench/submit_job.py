@@ -181,7 +181,7 @@ echo "Data copied to local disk ($(wc -l < datasets/sc1_delta_v2.jsonl) lines)"
 
 # 3. Download model from HuggingFace (token injected via AML env vars)
 echo "Downloading model from HuggingFace..."
-hf download {HF_MODEL_REPO} --local-dir {LOCAL_MODEL_DIR} --local-dir-use-symlinks False --token "$HF_TOKEN"
+hf download {HF_MODEL_REPO} --local-dir {LOCAL_MODEL_DIR} --token "$HF_TOKEN"
 echo "Model downloaded to {LOCAL_MODEL_DIR}"
 ls {LOCAL_MODEL_DIR}/
 
