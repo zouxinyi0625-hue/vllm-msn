@@ -1,26 +1,43 @@
 """Parameter space definition for Gemma4 MoE serving optimization on A100 80GB.
 
+vLLM version: 0.21.1rc1.dev270+g6cbe448ee
+
 Fixed params (always use, not searchable):
   - quantization: "fp8"
   - enforce_eager: False (CUDA graphs on)
   - gpu_memory_utilization: 0.95
   - kv_cache_dtype: "auto"
 
-Searchable params: MoE kernel config, batch/scheduling, MTP depth.
+Fixed env vars (A100 sm_80 constraints):
+  - VLLM_USE_FLASHINFER_MOE_FP8=0 (requires sm_90+)
+  - VLLM_USE_FLASHINFER_SAMPLER=0
+  - VLLM_MOE_USE_DEEP_GEMM=0 (requires sm_90+)
+
+Searchable:
+  - Batch/scheduling: max_num_seqs, max_num_batched_tokens, max_model_len
+  - MTP speculative decoding depth
+  - MoE backend (via --moe-backend passed to LLM())
+  - MoE env vars: VLLM_HUMMING_MOE_GEMM_TYPE
 """
 from __future__ import annotations
 
 import random
 
 # --- Searchable parameter space ---
+# moe_backend: passed as LLM kwarg (--moe-backend CLI equivalent)
+#   "auto" = vLLM default priority: tries FLASHINFER > DEEPGEMM > TRITON etc.
+#   "triton" = Triton fused MoE (always works on A100)
+#   "humming" = Humming Mixed Precision kernels
+#   "cutlass" = vLLM CUTLASS kernels
+# Note: deprecated env vars VLLM_FLASHINFER_MOE_BACKEND still works in 0.21
+#       but will be removed in 0.23. We use both approaches for coverage.
 PARAM_SPACE = {
     "max_num_seqs": [64, 96, 128, 192, 256],
     "max_num_batched_tokens": [8192, 16384, 24576, 32768],
     "max_model_len": [16384, 24576],
     "spec_tokens": [3, 5, 7, 9],
-    "VLLM_USE_FUSED_MOE_GROUPED_TOPK": ["0", "1"],
-    "VLLM_FLASHINFER_MOE_BACKEND": ["throughput", "latency"],
-    "VLLM_HUMMING_MOE_GEMM_TYPE": ["indexed", "grouped", "auto"],
+    "moe_backend": ["auto", "triton", "humming", "cutlass"],
+    "VLLM_HUMMING_MOE_GEMM_TYPE": ["indexed", "grouped"],
 }
 
 # --- Fixed params (always applied) ---
@@ -33,8 +50,6 @@ FIXED_PARAMS = {
 
 # Parameters that are env vars (set before vllm import)
 ENV_VAR_PARAMS = {
-    "VLLM_USE_FUSED_MOE_GROUPED_TOPK",
-    "VLLM_FLASHINFER_MOE_BACKEND",
     "VLLM_HUMMING_MOE_GEMM_TYPE",
 }
 
@@ -103,6 +118,9 @@ def config_to_llm_kwargs(cfg: dict, scenario_cfg: dict) -> dict:
         kwargs["quantization"] = cfg["quantization"]
     if cfg.get("kv_cache_dtype", "auto") != "auto":
         kwargs["kv_cache_dtype"] = cfg["kv_cache_dtype"]
+    moe_backend = cfg.get("moe_backend")
+    if moe_backend and moe_backend != "auto":
+        kwargs["moe_backend"] = moe_backend
     return kwargs
 
 
@@ -121,12 +139,9 @@ def config_summary(cfg: dict) -> str:
     mml = cfg.get("max_model_len", 24576)
     if mml != 24576:
         parts.append(f"mml={mml}")
-    ftk = cfg.get("VLLM_USE_FUSED_MOE_GROUPED_TOPK")
-    if ftk is not None:
-        parts.append(f"FusedTopK={ftk}")
-    backend = cfg.get("VLLM_FLASHINFER_MOE_BACKEND")
-    if backend is not None:
-        parts.append(f"moe-{backend}")
+    moe_be = cfg.get("moe_backend")
+    if moe_be and moe_be != "auto":
+        parts.append(f"moe={moe_be}")
     humming = cfg.get("VLLM_HUMMING_MOE_GEMM_TYPE")
     if humming is not None:
         parts.append(f"humming-{humming}")
@@ -154,6 +169,9 @@ def config_to_serve_cmd(cfg: dict, model_path: str = "${MODEL_PATH}",
         args.append("  --no-enable-log-requests")
     else:
         args.append("  --enforce-eager")
+    moe_backend = cfg.get("moe_backend")
+    if moe_backend and moe_backend != "auto":
+        args.append(f"  --moe-backend {moe_backend}")
     spec = cfg.get("spec_tokens", 0)
     if spec > 0:
         args.append(f"  --spec-model ${{ASSISTANT_MODEL_PATH}}")
@@ -212,16 +230,17 @@ def _initial_exploration(n: int) -> list[dict]:
     """First round: vary one parameter at a time from baseline."""
     configs = []
     variations = [
+        {"moe_backend": "triton"},
+        {"moe_backend": "humming"},
+        {"moe_backend": "cutlass"},
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped"},
-        {"VLLM_FLASHINFER_MOE_BACKEND": "latency"},
+        {"VLLM_HUMMING_MOE_GEMM_TYPE": "indexed"},
         {"spec_tokens": 7},
+        {"spec_tokens": 9},
         {"max_num_seqs": 192},
         {"max_num_seqs": 96},
         {"max_num_batched_tokens": 24576},
-        {"VLLM_USE_FUSED_MOE_GROUPED_TOPK": "0"},
         {"max_model_len": 16384},
-        {"spec_tokens": 9},
-        {"VLLM_HUMMING_MOE_GEMM_TYPE": "indexed"},
         {"max_num_batched_tokens": 32768},
     ]
     for v in variations[:n]:

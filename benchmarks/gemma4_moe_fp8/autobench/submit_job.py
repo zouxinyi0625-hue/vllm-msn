@@ -124,8 +124,7 @@ def build_job_command(
         result_name = f"{job_ts}_exp{i}_{slug}"
 
         env_exports = []
-        for key in ["VLLM_USE_FUSED_MOE_GROUPED_TOPK",
-                    "VLLM_FLASHINFER_MOE_BACKEND", "VLLM_HUMMING_MOE_GEMM_TYPE"]:
+        for key in ["VLLM_HUMMING_MOE_GEMM_TYPE"]:
             if key in config:
                 env_exports.append(f'export {key}="{config[key]}"')
         env_block = "\n".join(env_exports)
