@@ -140,6 +140,45 @@ def config_summary(cfg: dict) -> str:
     return " | ".join(parts)
 
 
+def config_to_serve_cmd(cfg: dict, model_path: str = "${MODEL_PATH}",
+                        port: int = 8100) -> str:
+    """Convert a config dict to a deployable 'vllm serve' command."""
+    args = [
+        f"vllm serve {model_path}",
+        f"  --port {port}",
+        "  --dtype auto",
+        "  --trust-remote-code",
+        f"  --max-model-len {cfg.get('max_model_len', 24576)}",
+        f"  --max-num-seqs {cfg.get('max_num_seqs', 128)}",
+        f"  --max-num-batched-tokens {cfg.get('max_num_batched_tokens', 16384)}",
+        f"  --gpu-memory-utilization {cfg.get('gpu_memory_utilization', 0.95)}",
+    ]
+    if cfg.get("quantization"):
+        args.append(f"  --quantization {cfg['quantization']}")
+    if cfg.get("kv_cache_dtype", "auto") != "auto":
+        args.append(f"  --kv-cache-dtype {cfg['kv_cache_dtype']}")
+    if not cfg.get("enforce_eager", False):
+        args.append("  --no-enable-log-requests")
+    else:
+        args.append("  --enforce-eager")
+    spec = cfg.get("spec_tokens", 0)
+    if spec > 0:
+        args.append(f"  --spec-model ${{ASSISTANT_MODEL_PATH}}")
+        args.append(f"  --spec-tokens {spec}")
+
+    cmd = " \\\n".join(args)
+
+    env_lines = []
+    for key in ENV_VAR_PARAMS:
+        if key in cfg:
+            env_lines.append(f"export {key}={cfg[key]}")
+    for k, v in A100_FIXED_ENV.items():
+        env_lines.append(f"export {k}={v}")
+
+    env_block = "\n".join(env_lines)
+    return f"# Environment variables\n{env_block}\n\n# Serve command\n{cmd}"
+
+
 def generate_next_configs(history: list[dict], n: int = 4) -> list[dict]:
     """Generate the next batch of configs to try.
 

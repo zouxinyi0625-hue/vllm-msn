@@ -21,6 +21,7 @@ from pathlib import Path
 from config_space import (
     BASELINE_CONFIG,
     config_summary,
+    config_to_serve_cmd,
     generate_next_configs,
     validate_config,
 )
@@ -100,6 +101,8 @@ def print_status(history: list[dict]):
 def main():
     ap = argparse.ArgumentParser(description="Autobench local agent loop")
     ap.add_argument("--status", action="store_true", help="Show current results")
+    ap.add_argument("--best-serve", action="store_true",
+                    help="Print vllm serve command for the best config")
     ap.add_argument("--suggest", action="store_true",
                     help="Generate next configs without submitting")
     ap.add_argument("--round", action="store_true",
@@ -123,6 +126,22 @@ def main():
     if args.status:
         history = read_results(results_tsv)
         print_status(history)
+        return 0
+
+    if args.best_serve:
+        json_results = load_json_results(SCRIPT_DIR / "run_results")
+        if not json_results:
+            print("No JSON results found. Run experiments first.")
+            return 1
+        valid = [r for r in json_results if r.get("status") == "ok" and r.get("mean_output_tps", 0) > 0]
+        if not valid:
+            print("No valid results.")
+            return 1
+        best = max(valid, key=lambda r: r["mean_output_tps"])
+        print(f"# Best result: {best['mean_output_tps']} output tok/s")
+        print(f"# Config: {best.get('config_summary', '')}")
+        print(f"# Run ID: {best.get('run_id', 'unknown')}\n")
+        print(config_to_serve_cmd(best["config"]))
         return 0
 
     if args.suggest:
