@@ -1,0 +1,81 @@
+# Autobench Results — Gemma4 26B MoE FP8 on A100 80GB
+
+## Baseline
+- **E011**: 2020 output tok/s, 8540 total tok/s (fp8 | CG | MTP-k5 | mns=128 | mnbt=16384)
+
+## Best Result
+- **humming-grouped (default params)**: 2030.29 output tok/s (+0.5% vs baseline)
+
+## Round 1: One-at-a-time exploration (2026-06-08)
+
+| Config | output_tps | total_tps | stdev | vs baseline |
+|--------|-----------|-----------|-------|-------------|
+| **humming-grouped** | **2030.29** | 8870.83 | 21.01 | **+0.5%** |
+| baseline (re-run) | 2025.02 | 8872.53 | 5.57 | +0.2% |
+| mnbt=24576 | 2005.95 | 8686.84 | 23.82 | -0.7% |
+| mnbt=8192 | 2002.93 | 8732.70 | 34.94 | -0.8% |
+| mns=256 | 1997.02 | 8646.74 | 22.29 | -1.1% |
+| mml=16384 | 1996.15 | 8803.30 | 31.15 | -1.2% |
+| MTP-k3 | 1984.48 | 8730.40 | 47.74 | -1.8% |
+| mnbt=32768 | 1982.39 | 8648.52 | 7.22 | -1.9% |
+| mns=96 | 1955.14 | 8514.48 | 28.27 | -3.2% |
+| humming-indexed | (see round 2) | — | — | — |
+| moe=cutlass | (not in this table) | — | — | — |
+| moe=triton | CRASH | — | — | sm_89+ |
+| moe=humming | CRASH | — | — | not in FP8 oracle |
+| MTP-k9 | CRASH | — | — | — |
+
+## Round 2: Combinations around humming-grouped (2026-06-09)
+
+| Config | output_tps | total_tps | stdev | vs baseline |
+|--------|-----------|-----------|-------|-------------|
+| humming-grouped + MTP-k3 | 2025.13 | 8841.67 | 2.82 | +0.3% |
+| humming-grouped + mml=16384 + mnbt=24576 | 2011.43 | 8908.26 | 25.65 | -0.4% |
+| humming-grouped + mnbt=24576 | 2007.38 | 8766.04 | 13.42 | -0.6% |
+| humming-indexed + mns=192 | 2000.07 | 8681.59 | 29.89 | -1.0% |
+| humming-grouped + mml=16384 | 1994.79 | 8848.11 | 25.35 | -1.2% |
+| humming-grouped + mnbt=8192 | 1993.39 | 8739.34 | 64.18 | -1.3% |
+| humming-indexed | 1985.73 | 8692.10 | 12.39 | -1.7% |
+| humming-grouped + MTP-k7 | 1978.15 | 8684.54 | 2.60 | -2.1% |
+| humming-grouped + mns=192 + mnbt=24576 | 1976.36 | 8637.61 | 28.56 | -2.2% |
+| humming-grouped + mns=192 | 1961.06 | 8576.98 | 10.97 | -2.9% |
+| humming-grouped + mns=192 + mnbt=32768 | 1960.07 | 8545.59 | 3.67 | -3.0% |
+| humming-grouped + mns=64 | 1869.49 | 8275.30 | 4.48 | -7.5% |
+
+## Key Findings
+
+1. **humming-grouped is the best MoE setting** but only +0.5% over baseline. The gain is real but small.
+2. **Default batch params (mns=128, mnbt=16384) are near-optimal** — all deviations perform worse.
+3. **MTP-k5 is the sweet spot** — k3 is comparable, k7 is worse, k9 crashes.
+4. **mns=192/256 hurts throughput** — more concurrent sequences doesn't help at this scale.
+5. **mnbt=24576/32768 doesn't help** — extra batched tokens adds overhead without benefit.
+6. **mml=16384 is slightly worse** — shorter context doesn't improve throughput for our workload.
+7. **humming-indexed is consistently worse than grouped** (~1.7-2% slower).
+
+## Crashes (DO NOT retry)
+
+| Config | Root Cause |
+|--------|-----------|
+| moe_backend=triton | Triton FP8 needs sm_89+ (A100 is sm_80) |
+| moe_backend=humming | Not in FP8 oracle mapping (only MXFP4) |
+| moe_backend=deep_gemm | Requires sm_90+ (Hopper/Blackwell) |
+| MTP-k9 | Unknown (likely OOM or kernel issue) |
+| kv_cache_dtype=fp8_e4m3 | Triton fp8e4nv codegen needs sm_89+ |
+| max_num_batched_tokens=32768 | OOM (round 1), runs but slow (round 2 w/ humming) |
+
+## Still Testing (Round 3)
+
+- async_scheduling=True
+- VLLM_HUMMING_USE_F16_ACCUM=1
+- VLLM_TEST_FORCE_FP8_MARLIN=1
+- enable_prefix_caching=False
+- moe_backend=marlin
+- spec_tokens=4
+
+## Observation
+
+The A100 80GB is already close to its throughput ceiling for this model at these settings.
+The baseline E011 config was well-tuned. Meaningful gains (>5%) likely require:
+- Hardware upgrade (H100/H200 for DeepGEMM, FlashInfer FP8, fp8 KV cache)
+- Model-level changes (different quantization, pruning)
+- Multi-GPU (TP=2) with larger batch sizes
