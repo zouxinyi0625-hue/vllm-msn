@@ -86,7 +86,7 @@
 
 ## Still Untested
 
-- spec_tokens=4
+- spec_tokens=4 (lower speculation depth — likely worse than k5 given k3 is already worse)
 
 ## Observation
 
