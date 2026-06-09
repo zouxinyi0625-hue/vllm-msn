@@ -4,7 +4,7 @@
 - **E011**: 2020 output tok/s, 8540 total tok/s (fp8 | CG | MTP-k5 | mns=128 | mnbt=16384)
 
 ## Best Result
-- **humming-grouped (default params)**: 2030.29 output tok/s (+0.5% vs baseline)
+- **humming-grouped + async-sched**: 2054.02 output tok/s (+1.7% vs baseline)
 
 ## Round 1: One-at-a-time exploration (2026-06-08)
 
@@ -42,16 +42,6 @@
 | humming-grouped + mns=192 + mnbt=32768 | 1960.07 | 8545.59 | 3.67 | -3.0% |
 | humming-grouped + mns=64 | 1869.49 | 8275.30 | 4.48 | -7.5% |
 
-## Key Findings
-
-1. **humming-grouped is the best MoE setting** but only +0.5% over baseline. The gain is real but small.
-2. **Default batch params (mns=128, mnbt=16384) are near-optimal** — all deviations perform worse.
-3. **MTP-k5 is the sweet spot** — k3 is comparable, k7 is worse, k9 crashes.
-4. **mns=192/256 hurts throughput** — more concurrent sequences doesn't help at this scale.
-5. **mnbt=24576/32768 doesn't help** — extra batched tokens adds overhead without benefit.
-6. **mml=16384 is slightly worse** — shorter context doesn't improve throughput for our workload.
-7. **humming-indexed is consistently worse than grouped** (~1.7-2% slower).
-
 ## Crashes (DO NOT retry)
 
 | Config | Root Cause |
@@ -63,19 +53,46 @@
 | kv_cache_dtype=fp8_e4m3 | Triton fp8e4nv codegen needs sm_89+ |
 | max_num_batched_tokens=32768 | OOM (round 1), runs but slow (round 2 w/ humming) |
 
-## Still Testing (Round 3)
+## Round 3: Individual feature exploration (2026-06-09)
 
-- async_scheduling=True
-- VLLM_HUMMING_USE_F16_ACCUM=1
-- VLLM_TEST_FORCE_FP8_MARLIN=1
-- enable_prefix_caching=False
-- moe_backend=marlin
+| Config | output_tps | total_tps | stdev | vs baseline |
+|--------|-----------|-----------|-------|-------------|
+| **async-sched** | **2041.08** | 8901.59 | 0.0 | **+1.0%** |
+| humming-grouped (re-run) | 2031.63 | 8759.47 | 18.79 | +0.6% |
+| marlin-forced | 1997.09 | 8769.21 | 0.0 | -1.1% |
+| f16acc (humming-grouped) | 1996.37 | 8756.44 | 0.0 | -1.2% |
+| moe=marlin | 1990.87 | 8750.68 | 0.0 | -1.4% |
+| no-prefix-cache | 1905.15 | 8299.38 | 0.0 | -5.7% |
+| kv-fp8 | CRASH | — | — | sm_89+ needed |
+
+## Round 4: Combo of winners (2026-06-09)
+
+| Config | output_tps | total_tps | stdev | vs baseline |
+|--------|-----------|-----------|-------|-------------|
+| **humming-grouped + async-sched** | **2054.02** | 8995.19 | 0.0 | **+1.7%** |
+
+## Key Findings
+
+1. **humming-grouped + async-sched is the new best** at 2054 tok/s (+1.7% over baseline).
+2. **async-sched alone is +1.0%**, humming-grouped alone is +0.5% — they stack.
+3. **Default batch params (mns=128, mnbt=16384) are near-optimal** — all deviations perform worse.
+4. **MTP-k5 is the sweet spot** — k3 is comparable, k7 is worse, k9 crashes.
+5. **mns=192/256 hurts throughput** — more concurrent sequences doesn't help at this scale.
+6. **mnbt=24576/32768 doesn't help** — extra batched tokens adds overhead without benefit.
+7. **mml=16384 is slightly worse** — shorter context doesn't improve throughput for our workload.
+8. **humming-indexed is consistently worse than grouped** (~1.7-2% slower).
+9. **Prefix caching helps** — disabling it loses 5.7%.
+10. **f16acc, marlin-forced, moe=marlin** — all slightly worse than baseline, not worth it.
+
+## Still Untested
+
 - spec_tokens=4
 
 ## Observation
 
-The A100 80GB is already close to its throughput ceiling for this model at these settings.
-The baseline E011 config was well-tuned. Meaningful gains (>5%) likely require:
+The A100 80GB is close to its throughput ceiling for this model.
+Best config (humming-grouped + async-sched) gives +1.7% over baseline.
+Meaningful further gains (>5%) likely require:
 - Hardware upgrade (H100/H200 for DeepGEMM, FlashInfer FP8, fp8 KV cache)
 - Model-level changes (different quantization, pruning)
 - Multi-GPU (TP=2) with larger batch sizes
