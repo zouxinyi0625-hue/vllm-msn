@@ -18,6 +18,7 @@ Known crash on A100 (DO NOT use):
   - --moe-backend humming: not in FP8 oracle mapping (only MXFP4)
   - --moe-backend deep_gemm: requires sm_90+ (Hopper/Blackwell only)
   - max_num_batched_tokens=32768: OOM on 80GB
+  - kv_cache_dtype=fp8_e4m3: Triton fp8e4nv codegen needs sm_89+
 
 Working on A100:
   - --moe-backend cutlass: TritonOrCutlassExperts (2017 tok/s, slightly slower)
@@ -54,7 +55,6 @@ PARAM_SPACE = {
     "VLLM_TEST_FORCE_FP8_MARLIN": ["0", "1"],
     "enable_prefix_caching": [True, False],
     "enable_chunked_prefill": [True, False],
-    "kv_cache_dtype": ["auto", "fp8_e4m3"],
     "async_scheduling": [True, False],
 }
 
@@ -118,6 +118,9 @@ def validate_config(cfg: dict) -> tuple[bool, str]:
 
     if mnbt >= 32768:
         return False, "max_num_batched_tokens=32768 OOMs on A100 80GB"
+
+    if cfg.get("kv_cache_dtype") == "fp8_e4m3":
+        return False, "fp8_e4m3 KV cache crashes on A100 (Triton fp8e4nv needs sm_89+)"
 
     return True, ""
 
@@ -286,7 +289,6 @@ def _initial_exploration(n: int) -> list[dict]:
         # High-priority: new acceleration options from vLLM docs
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped"},
         {"async_scheduling": True},
-        {"kv_cache_dtype": "fp8_e4m3"},
         {"VLLM_TEST_FORCE_FP8_MARLIN": "1"},
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped", "VLLM_HUMMING_USE_F16_ACCUM": "1"},
         {"enable_prefix_caching": False},
