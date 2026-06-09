@@ -84,10 +84,6 @@
 9. **Prefix caching helps** — disabling it loses 5.7%.
 10. **f16acc, marlin-forced, moe=marlin** — all slightly worse than baseline, not worth it.
 
-## Still Untested
-
-- spec_tokens=4 (lower speculation depth — likely worse than k5 given k3 is already worse)
-
 ## Observation
 
 The A100 80GB is close to its throughput ceiling for this model.
