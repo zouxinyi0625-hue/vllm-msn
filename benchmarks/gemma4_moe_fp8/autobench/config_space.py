@@ -47,13 +47,15 @@ PARAM_SPACE = {
     "max_num_seqs": [64, 96, 128, 192, 256],
     "max_num_batched_tokens": [8192, 16384, 24576],
     "max_model_len": [16384, 24576],
-    "spec_tokens": [3, 5, 7, 9],
+    "spec_tokens": [3, 4, 5, 7, 9],
     "moe_backend": ["auto", "cutlass", "marlin"],
     "VLLM_HUMMING_MOE_GEMM_TYPE": ["indexed", "grouped"],
     "VLLM_HUMMING_USE_F16_ACCUM": ["0", "1"],
     "VLLM_TEST_FORCE_FP8_MARLIN": ["0", "1"],
     "enable_prefix_caching": [True, False],
     "enable_chunked_prefill": [True, False],
+    "kv_cache_dtype": ["auto", "fp8_e4m3"],
+    "async_scheduling": [True, False],
 }
 
 # --- Fixed params (always applied) ---
@@ -92,9 +94,6 @@ BASELINE_CONFIG = {
 
 def validate_config(cfg: dict) -> tuple[bool, str]:
     """Validate a config dict. Returns (is_valid, error_message)."""
-    if cfg.get("kv_cache_dtype") == "fp8_e4m3":
-        return False, "fp8_e4m3 KV cache not supported on A100 (sm_80)"
-
     mns = cfg.get("max_num_seqs", 128)
     mnbt = cfg.get("max_num_batched_tokens", 16384)
     if mnbt < mns:
@@ -155,6 +154,8 @@ def config_to_llm_kwargs(cfg: dict, scenario_cfg: dict) -> dict:
         kwargs["enable_prefix_caching"] = cfg["enable_prefix_caching"]
     if "enable_chunked_prefill" in cfg:
         kwargs["enable_chunked_prefill"] = cfg["enable_chunked_prefill"]
+    if "async_scheduling" in cfg:
+        kwargs["async_scheduling"] = cfg["async_scheduling"]
     return kwargs
 
 
@@ -187,6 +188,10 @@ def config_summary(cfg: dict) -> str:
         parts.append("no-prefix-cache")
     if cfg.get("enable_chunked_prefill") is False:
         parts.append("no-chunked-pf")
+    if cfg.get("kv_cache_dtype", "auto") == "fp8_e4m3":
+        parts.append("kv-fp8")
+    if cfg.get("async_scheduling") is True:
+        parts.append("async-sched")
     return " | ".join(parts)
 
 
@@ -218,6 +223,8 @@ def config_to_serve_cmd(cfg: dict, model_path: str = "${MODEL_PATH}",
         args.append("  --no-enable-prefix-caching")
     if cfg.get("enable_chunked_prefill") is False:
         args.append("  --no-enable-chunked-prefill")
+    if cfg.get("async_scheduling") is True:
+        args.append("  --async-scheduling")
     spec = cfg.get("spec_tokens", 0)
     if spec > 0:
         args.append(f"  --spec-model ${{ASSISTANT_MODEL_PATH}}")
@@ -276,21 +283,24 @@ def _initial_exploration(n: int) -> list[dict]:
     """First round: vary one parameter at a time from baseline."""
     configs = []
     variations = [
+        # High-priority: new acceleration options from vLLM docs
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped"},
-        {"VLLM_HUMMING_MOE_GEMM_TYPE": "indexed"},
-        {"moe_backend": "cutlass"},
-        {"moe_backend": "marlin"},
+        {"async_scheduling": True},
+        {"kv_cache_dtype": "fp8_e4m3"},
         {"VLLM_TEST_FORCE_FP8_MARLIN": "1"},
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped", "VLLM_HUMMING_USE_F16_ACCUM": "1"},
         {"enable_prefix_caching": False},
         {"enable_chunked_prefill": False},
-        {"spec_tokens": 7},
-        {"spec_tokens": 3},
+        {"moe_backend": "marlin"},
+        # Batch/scheduling variations
+        {"spec_tokens": 4},
         {"max_num_seqs": 192},
-        {"max_num_seqs": 96},
+        {"max_num_seqs": 256},
         {"max_num_batched_tokens": 24576},
-        {"max_num_batched_tokens": 8192},
-        {"max_model_len": 16384},
+        # Lower priority
+        {"VLLM_HUMMING_MOE_GEMM_TYPE": "indexed"},
+        {"moe_backend": "cutlass"},
+        {"max_num_seqs": 96},
     ]
     for v in variations[:n]:
         cfg = {**BASELINE_CONFIG, **v}
