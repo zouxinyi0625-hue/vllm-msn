@@ -95,17 +95,20 @@ def run_single(cfg: dict, num_prompts: int, reps: int) -> dict:
     from vllm import LLM, SamplingParams
     from transformers import AutoTokenizer
 
-    model = MODEL_TEXT_ONLY
+    model = cfg.get("model", MODEL_TEXT_ONLY)
 
     llm_kwargs = config_to_llm_kwargs(
         cfg, {"max_num_batched_tokens": cfg.get("max_num_batched_tokens", 16384)}
     )
     llm_kwargs["model"] = model
 
-    spec_tokens = cfg.get("spec_tokens", 0)
-    if spec_tokens > 0:
-        llm_kwargs["spec_model"] = MODEL_ASSISTANT
-        llm_kwargs["spec_tokens"] = spec_tokens
+    if "speculative_config" in cfg:
+        llm_kwargs["speculative_config"] = cfg["speculative_config"]
+    else:
+        spec_tokens = cfg.get("spec_tokens", 0)
+        if spec_tokens > 0:
+            llm_kwargs["spec_model"] = MODEL_ASSISTANT
+            llm_kwargs["spec_tokens"] = spec_tokens
 
     summary = config_summary(cfg)
     print(f"\n{'='*60}", flush=True)
