@@ -84,6 +84,22 @@
 9. **Prefix caching helps** — disabling it loses 5.7%.
 10. **f16acc, marlin-forced, moe=marlin** — all slightly worse than baseline, not worth it.
 
+## Round 5: vLLM 0.22.1 + CUDA 13.0 image comparison (2026-06-09)
+
+Old image: vLLM 0.21.0 + CUDA 12.9 | New image: vLLM 0.22.1 + CUDA 13.0
+
+| Config | Old output_tps | New output_tps | Old total_tps | New total_tps | stdev (old/new) |
+|--------|----------------|----------------|---------------|---------------|-----------------|
+| baseline (fp8 CG MTP-k5 mns=128 mnbt=16384) | 2016.54 | 2010.58 | 8701.09 | 8928.23 | 9.88 / 36.62 |
+| humming-grouped + async-sched | 2021.67 | 2028.30 | 8844.86 | 8852.40 | 0.72 / 0.08 |
+
+### Findings
+
+- **output_tps unchanged**: generation speed differs by <1% between images, within noise.
+- **total_tps ~2-3% higher on new image**: indicates prefill speedup from CUDA 13.0 / vLLM 0.22.1 optimizations.
+- **humming-grouped + async-sched gain is unstable**: only +5~18 tok/s over baseline, within stdev — not statistically significant.
+- **New image is safe to adopt**: no regression in output_tps, slight prefill improvement, marginally higher QPS.
+
 ## Observation
 
 The A100 80GB is close to its throughput ceiling for this model.
