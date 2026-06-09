@@ -11,6 +11,6 @@
         "method": "dflash",
         "model": "z-lab/gemma-4-26B-A4B-it-DFlash",
         "num_speculative_tokens": 15,
-        "attention_backend": "flash_attn"
+        "attention_backend": "triton_attn"
     }
 }
