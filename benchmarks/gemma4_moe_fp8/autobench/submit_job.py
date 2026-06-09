@@ -6,7 +6,7 @@ Each job:
   - Copies data from mount to local disk
   - Runs one or more experiments sequentially
   - Copies results back to mount (date+config naming, no overwrites)
-  - sleep infinity at the end (SSH in to debug if needed)
+  - Exits when done (use --debug to keep alive for SSH inspection)
 
 Usage:
     # Single config
@@ -15,8 +15,8 @@ Usage:
     # Multiple configs in one job (saves machine startup time)
     python submit_job.py --config configs/a.json configs/b.json configs/c.json
 
-    # Override prompts/reps
-    python submit_job.py --config configs/a.json --prompts 200 --reps 2
+    # Keep machine alive for debugging
+    python submit_job.py --config configs/a.json --debug
 """
 from __future__ import annotations
 
@@ -110,11 +110,13 @@ def build_job_command(
     reps: int = 2,
     branch: str = GIT_BRANCH,
     job_id: str = "",
+    debug: bool = False,
 ) -> str:
-    """Build bash command that runs multiple experiments then sleeps.
+    """Build bash command that runs multiple experiments.
 
     Each experiment is isolated: failure in one does not affect the next.
     Results are tagged with job_id to prevent conflicts from parallel jobs.
+    If debug=True, sleeps infinity at end for SSH inspection.
     """
     job_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     if not job_id:
@@ -131,7 +133,8 @@ def build_job_command(
         result_name = f"{job_id}_exp{i}_{slug}"
 
         env_exports = []
-        for key in ["VLLM_HUMMING_MOE_GEMM_TYPE"]:
+        for key in ["VLLM_HUMMING_MOE_GEMM_TYPE", "VLLM_HUMMING_USE_F16_ACCUM",
+                    "VLLM_TEST_FORCE_FP8_MARLIN"]:
             if key in config:
                 env_exports.append(f'export {key}="{config[key]}"')
             else:
@@ -178,11 +181,12 @@ fi
 
     experiments_str = "\n".join(experiment_blocks)
 
+    debug_mode = "yes" if debug else "no"
     cmd = f"""#!/bin/bash
 # Autobench Job — {job_id} — {len(configs)} experiment(s)
 # Branch: {branch}
 # Prompts: {prompts}, Reps: {reps} (matches sc1 ablation settings)
-# Machine stays alive via sleep infinity at end (SSH in to debug)
+# Debug: {debug_mode}
 
 set +e  # Do NOT exit on error — we want all experiments to run
 
@@ -274,6 +278,10 @@ echo "=== All experiments done ==="
 echo "Job ID: {job_id}"
 echo "Results: $RESULTS_DIR/"
 echo "Finished at: $(date)"
+"""
+
+    if debug:
+        cmd += """
 echo ""
 echo "Machine staying alive (sleep infinity). SSH in to inspect or re-run."
 echo "Cancel the job when done."
@@ -291,6 +299,7 @@ def submit_experiment(
     display_name: str | None = None,
     ml_client: MLClient | None = None,
     hf_token: str | None = None,
+    debug: bool = False,
 ) -> str:
     """Submit one job running multiple experiments. Returns job name (ID).
 
@@ -318,7 +327,7 @@ def submit_experiment(
             display_name = f"autobench-{job_ts}-{len(configs)}exps"
 
     job_cmd = build_job_command(configs, prompts=prompts, reps=reps,
-                               branch=branch, job_id=job_ts)
+                               branch=branch, job_id=job_ts, debug=debug)
 
     job = command(
         command=job_cmd,
@@ -401,6 +410,8 @@ def main():
     ap.add_argument("--branch", default=GIT_BRANCH,
                     help=f"Git branch to clone (default: {GIT_BRANCH})")
     ap.add_argument("--name", default=None, help="Custom job display name")
+    ap.add_argument("--debug", action="store_true",
+                    help="Keep machine alive (sleep infinity) after experiments for SSH debugging")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print job command without submitting")
     args = ap.parse_args()
@@ -413,7 +424,7 @@ def main():
     if args.dry_run:
         print("=== DRY RUN — Job Command ===\n")
         print(build_job_command(configs, prompts=args.prompts, reps=args.reps,
-                                branch=args.branch))
+                                branch=args.branch, debug=args.debug))
         print(f"\n=== Would submit {len(configs)} experiment(s) on branch '{args.branch}' ===")
         return 0
 
@@ -423,9 +434,13 @@ def main():
         reps=args.reps,
         branch=args.branch,
         display_name=args.name,
+        debug=args.debug,
     )
     print(f"\nJob submitted: {job_name}")
-    print("Job will sleep infinity after experiments. SSH in or cancel when done.")
+    if args.debug:
+        print("Job will sleep infinity after experiments. SSH in or cancel when done.")
+    else:
+        print("Job will exit automatically after experiments complete.")
     return 0
 
 

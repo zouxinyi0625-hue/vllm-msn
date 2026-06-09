@@ -13,31 +13,47 @@ Fixed env vars (A100 sm_80 constraints):
   - VLLM_USE_FLASHINFER_SAMPLER=0
   - VLLM_MOE_USE_DEEP_GEMM=0 (requires sm_90+)
 
+Known crash on A100 (DO NOT use):
+  - --moe-backend triton: Triton FP8 requires sm_89+ (supports_fp8 check)
+  - --moe-backend humming: not in FP8 oracle mapping (only MXFP4)
+  - --moe-backend deep_gemm: requires sm_90+ (Hopper/Blackwell only)
+  - max_num_batched_tokens=32768: OOM on 80GB
+
+Working on A100:
+  - --moe-backend cutlass: TritonOrCutlassExperts (2017 tok/s, slightly slower)
+  - --moe-backend marlin: Marlin kernel (sm_75+, designed for non-Ada FP8)
+  - VLLM_HUMMING_MOE_GEMM_TYPE=grouped: bypasses FP8 oracle (2030 tok/s, best)
+  - VLLM_TEST_FORCE_FP8_MARLIN=1: force Marlin FP8 MoE kernel
+
 Searchable:
   - Batch/scheduling: max_num_seqs, max_num_batched_tokens, max_model_len
   - MTP speculative decoding depth
-  - MoE backend (via --moe-backend passed to LLM())
-  - MoE env vars: VLLM_HUMMING_MOE_GEMM_TYPE
+  - MoE backend (only A100-safe options)
+  - MoE env vars: VLLM_HUMMING_MOE_GEMM_TYPE, VLLM_HUMMING_USE_F16_ACCUM
+  - Scheduling: enable_prefix_caching, enable_chunked_prefill
+  - Marlin: VLLM_TEST_FORCE_FP8_MARLIN
 """
 from __future__ import annotations
 
 import random
 
 # --- Searchable parameter space ---
-# moe_backend: passed as LLM kwarg (--moe-backend CLI equivalent)
-#   "auto" = vLLM default priority: tries FLASHINFER > DEEPGEMM > TRITON etc.
-#   "triton" = Triton fused MoE (always works on A100)
-#   "humming" = Humming Mixed Precision kernels
-#   "cutlass" = vLLM CUTLASS kernels
-# Note: deprecated env vars VLLM_FLASHINFER_MOE_BACKEND still works in 0.21
-#       but will be removed in 0.23. We use both approaches for coverage.
+# moe_backend: only A100-safe options
+#   "auto" = vLLM default (with FLASHINFER/DEEPGEMM disabled, falls through to Marlin)
+#   "cutlass" = vLLM CUTLASS kernels (works on A100, slightly slower than auto)
+#   "marlin" = Marlin FP8 kernel (designed for sm<89, good on A100)
+# CRASHED on A100: "triton" (needs sm_89), "humming" (not in FP8 oracle), "deep_gemm" (needs sm_90)
 PARAM_SPACE = {
     "max_num_seqs": [64, 96, 128, 192, 256],
-    "max_num_batched_tokens": [8192, 16384, 24576, 32768],
+    "max_num_batched_tokens": [8192, 16384, 24576],
     "max_model_len": [16384, 24576],
     "spec_tokens": [3, 5, 7, 9],
-    "moe_backend": ["auto", "triton", "humming", "cutlass"],
+    "moe_backend": ["auto", "cutlass", "marlin"],
     "VLLM_HUMMING_MOE_GEMM_TYPE": ["indexed", "grouped"],
+    "VLLM_HUMMING_USE_F16_ACCUM": ["0", "1"],
+    "VLLM_TEST_FORCE_FP8_MARLIN": ["0", "1"],
+    "enable_prefix_caching": [True, False],
+    "enable_chunked_prefill": [True, False],
 }
 
 # --- Fixed params (always applied) ---
@@ -51,6 +67,8 @@ FIXED_PARAMS = {
 # Parameters that are env vars (set before vllm import)
 ENV_VAR_PARAMS = {
     "VLLM_HUMMING_MOE_GEMM_TYPE",
+    "VLLM_HUMMING_USE_F16_ACCUM",
+    "VLLM_TEST_FORCE_FP8_MARLIN",
 }
 
 # Fixed env vars for A100 80GB (sm_80)
@@ -90,6 +108,18 @@ def validate_config(cfg: dict) -> tuple[bool, str]:
     if spec > 0 and cfg.get("quantization") is None:
         return False, "MTP requires quantization=fp8 (assistant model is FP8)"
 
+    # Known crashes on A100
+    moe_be = cfg.get("moe_backend", "auto")
+    if moe_be == "triton":
+        return False, "moe_backend=triton crashes on A100 (Triton FP8 needs sm_89+)"
+    if moe_be == "humming":
+        return False, "moe_backend=humming crashes (not in FP8 oracle, only MXFP4)"
+    if moe_be == "deep_gemm":
+        return False, "moe_backend=deep_gemm crashes on A100 (needs sm_90+)"
+
+    if mnbt >= 32768:
+        return False, "max_num_batched_tokens=32768 OOMs on A100 80GB"
+
     return True, ""
 
 
@@ -121,6 +151,10 @@ def config_to_llm_kwargs(cfg: dict, scenario_cfg: dict) -> dict:
     moe_backend = cfg.get("moe_backend")
     if moe_backend and moe_backend != "auto":
         kwargs["moe_backend"] = moe_backend
+    if "enable_prefix_caching" in cfg:
+        kwargs["enable_prefix_caching"] = cfg["enable_prefix_caching"]
+    if "enable_chunked_prefill" in cfg:
+        kwargs["enable_chunked_prefill"] = cfg["enable_chunked_prefill"]
     return kwargs
 
 
@@ -145,6 +179,14 @@ def config_summary(cfg: dict) -> str:
     humming = cfg.get("VLLM_HUMMING_MOE_GEMM_TYPE")
     if humming is not None:
         parts.append(f"humming-{humming}")
+    if cfg.get("VLLM_HUMMING_USE_F16_ACCUM") == "1":
+        parts.append("f16acc")
+    if cfg.get("VLLM_TEST_FORCE_FP8_MARLIN") == "1":
+        parts.append("marlin-forced")
+    if cfg.get("enable_prefix_caching") is False:
+        parts.append("no-prefix-cache")
+    if cfg.get("enable_chunked_prefill") is False:
+        parts.append("no-chunked-pf")
     return " | ".join(parts)
 
 
@@ -172,6 +214,10 @@ def config_to_serve_cmd(cfg: dict, model_path: str = "${MODEL_PATH}",
     moe_backend = cfg.get("moe_backend")
     if moe_backend and moe_backend != "auto":
         args.append(f"  --moe-backend {moe_backend}")
+    if cfg.get("enable_prefix_caching") is False:
+        args.append("  --no-enable-prefix-caching")
+    if cfg.get("enable_chunked_prefill") is False:
+        args.append("  --no-enable-chunked-prefill")
     spec = cfg.get("spec_tokens", 0)
     if spec > 0:
         args.append(f"  --spec-model ${{ASSISTANT_MODEL_PATH}}")
@@ -230,18 +276,21 @@ def _initial_exploration(n: int) -> list[dict]:
     """First round: vary one parameter at a time from baseline."""
     configs = []
     variations = [
-        {"moe_backend": "triton"},
-        {"moe_backend": "humming"},
-        {"moe_backend": "cutlass"},
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped"},
         {"VLLM_HUMMING_MOE_GEMM_TYPE": "indexed"},
+        {"moe_backend": "cutlass"},
+        {"moe_backend": "marlin"},
+        {"VLLM_TEST_FORCE_FP8_MARLIN": "1"},
+        {"VLLM_HUMMING_MOE_GEMM_TYPE": "grouped", "VLLM_HUMMING_USE_F16_ACCUM": "1"},
+        {"enable_prefix_caching": False},
+        {"enable_chunked_prefill": False},
         {"spec_tokens": 7},
-        {"spec_tokens": 9},
+        {"spec_tokens": 3},
         {"max_num_seqs": 192},
         {"max_num_seqs": 96},
         {"max_num_batched_tokens": 24576},
+        {"max_num_batched_tokens": 8192},
         {"max_model_len": 16384},
-        {"max_num_batched_tokens": 32768},
     ]
     for v in variations[:n]:
         cfg = {**BASELINE_CONFIG, **v}

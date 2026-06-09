@@ -120,6 +120,8 @@ def main():
                     help="Git branch for the job to clone (default: zxy_dev_autobench)")
     ap.add_argument("--results-tsv", type=Path, default=None,
                     help="Path to results.tsv (local or mounted)")
+    ap.add_argument("--debug", action="store_true",
+                    help="Keep jobs alive (sleep infinity) after experiments for SSH")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print what would be submitted without actually submitting")
     args = ap.parse_args()
@@ -173,14 +175,16 @@ def main():
             from submit_job import build_job_command
             print("=== DRY RUN ===\n")
             print(build_job_command(configs, prompts=args.prompts, reps=args.reps,
-                                    branch=args.branch))
+                                    branch=args.branch, debug=args.debug))
             return 0
 
         job_name = submit_experiment(
-            configs, prompts=args.prompts, reps=args.reps, branch=args.branch
+            configs, prompts=args.prompts, reps=args.reps, branch=args.branch,
+            debug=args.debug,
         )
         print(f"\nJob: {job_name}")
-        print("Job will sleep infinity after experiments. Cancel when done.")
+        if args.debug:
+            print("Job will sleep infinity after experiments. Cancel when done.")
         return 0
 
     if args.round:
@@ -214,21 +218,23 @@ def main():
             for j, jc in enumerate(job_configs, 1):
                 print(f"--- Job {j}/{len(job_configs)} ---")
                 print(build_job_command(jc, prompts=args.prompts, reps=args.reps,
-                                        branch=args.branch))
+                                        branch=args.branch, debug=args.debug))
                 print()
             return 0
 
         job_names = []
         for jc in job_configs:
             name = submit_experiment(
-                jc, prompts=args.prompts, reps=args.reps, branch=args.branch
+                jc, prompts=args.prompts, reps=args.reps, branch=args.branch,
+                debug=args.debug,
             )
             job_names.append(name)
 
         print(f"\n{len(job_names)} job(s) submitted:")
         for name in job_names:
             print(f"  - {name}")
-        print("\nAll jobs will sleep infinity after experiments. Cancel when done.")
+        if args.debug:
+            print("\nAll jobs will sleep infinity after experiments. Cancel when done.")
         return 0
 
     ap.print_help()
