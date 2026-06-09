@@ -66,7 +66,7 @@ SSH_PUB_KEY = (
     "H5PB6S6xLBLD3Ybm+tHW/vvT6d/qjd3wYvg2dAuGwc/Mw== xinyizou@microsoft.com"
 )
 
-ENVIRONMENT = "azureml:vllm_gemma4:3"
+ENVIRONMENT = "azureml:vllm_gemma4:4"
 INSTANCE_TYPE = "Singularity.ND12am_A100_v4"
 DATASTORE_PATH = "azureml://datastores/adls_msn_dni_09_rankfun/paths/"
 
