@@ -198,6 +198,68 @@ def config_summary(cfg: dict) -> str:
     return " | ".join(parts)
 
 
+def parse_summary(summary: str) -> dict:
+    """Reverse of config_summary(): parse a summary string back into a config dict."""
+    cfg = dict(FIXED_PARAMS)
+    cfg["max_num_seqs"] = 128
+    cfg["max_num_batched_tokens"] = 16384
+    cfg["max_model_len"] = 24576
+    cfg["spec_tokens"] = 0
+
+    parts = [p.strip() for p in summary.split("|")]
+    for part in parts:
+        if part == "fp8":
+            cfg["quantization"] = "fp8"
+        elif part == "bf16":
+            cfg["quantization"] = None
+        elif part == "CG":
+            cfg["enforce_eager"] = False
+        elif part.startswith("MTP-k"):
+            cfg["spec_tokens"] = int(part[5:])
+        elif part.startswith("mns="):
+            cfg["max_num_seqs"] = int(part[4:])
+        elif part.startswith("mnbt="):
+            cfg["max_num_batched_tokens"] = int(part[5:])
+        elif part.startswith("mml="):
+            cfg["max_model_len"] = int(part[4:])
+        elif part.startswith("moe="):
+            cfg["moe_backend"] = part[4:]
+        elif part.startswith("humming-"):
+            cfg["VLLM_HUMMING_MOE_GEMM_TYPE"] = part[8:]
+        elif part == "f16acc":
+            cfg["VLLM_HUMMING_USE_F16_ACCUM"] = "1"
+        elif part == "marlin-forced":
+            cfg["VLLM_TEST_FORCE_FP8_MARLIN"] = "1"
+        elif part == "no-prefix-cache":
+            cfg["enable_prefix_caching"] = False
+        elif part == "no-chunked-pf":
+            cfg["enable_chunked_prefill"] = False
+        elif part == "kv-fp8":
+            cfg["kv_cache_dtype"] = "fp8_e4m3"
+        elif part == "async-sched":
+            cfg["async_scheduling"] = True
+        elif part.startswith("mem="):
+            cfg["gpu_memory_utilization"] = float(part[4:])
+        elif part == "DeepGEMM":
+            pass  # legacy tag, DEEP_GEMM disabled on A100
+    return cfg
+
+
+def reproduce_command(cfg: dict) -> str:
+    """Generate a copy-paste command to reproduce a config on GPU."""
+    env_vars = ["VLLM_HUMMING_MOE_GEMM_TYPE", "VLLM_HUMMING_USE_F16_ACCUM",
+                "VLLM_TEST_FORCE_FP8_MARLIN"]
+    lines = [f"unset {v}" for v in env_vars]
+    lines.append("")
+
+    import json
+    cfg_clean = {k: v for k, v in cfg.items() if v is not None}
+    json_str = json.dumps(cfg_clean, separators=(",", ":"))
+    lines.append(f"echo '{json_str}' > /tmp/cfg_reproduce.json")
+    lines.append("python run_experiment.py --config /tmp/cfg_reproduce.json --prompts 1000 --reps 1")
+    return "\n".join(lines)
+
+
 def config_to_serve_cmd(cfg: dict, model_path: str = "${MODEL_PATH}",
                         port: int = 8100) -> str:
     """Convert a config dict to a deployable 'vllm serve' command."""
@@ -261,7 +323,7 @@ def generate_next_configs(history: list[dict], n: int = 4) -> list[dict]:
         return _initial_exploration(n)
 
     best = max(valid_runs, key=lambda h: h["output_tps"])
-    best_cfg = best.get("config", BASELINE_CONFIG)
+    best_cfg = best.get("config") or parse_summary(best.get("config_summary", ""))
 
     tried_summaries = {h.get("config_summary", "") for h in history}
     candidates = []

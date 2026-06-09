@@ -5,6 +5,7 @@ Usage:
     python analyze.py                         # analyze local results.tsv
     python analyze.py --tsv /path/to/results.tsv
     python analyze.py --json-dir run_results/ # detailed analysis from JSON files
+    python analyze.py --reproduce 20260609_031753  # print reproduce command for a run
 """
 from __future__ import annotations
 
@@ -14,8 +15,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from config_space import parse_summary, reproduce_command
+
 SCRIPT_DIR = Path(__file__).parent
-DEFAULT_TSV = SCRIPT_DIR / "results.tsv"
+DEFAULT_TSV = SCRIPT_DIR / "results_all.tsv"
 DEFAULT_JSON_DIR = SCRIPT_DIR / "run_results"
 
 
@@ -148,6 +151,8 @@ def main():
                     help="Path to JSON results directory")
     ap.add_argument("--output", type=Path, default=None,
                     help="Write report to file (default: stdout)")
+    ap.add_argument("--reproduce", type=str, default=None,
+                    help="Print reproduce command for a run_id (or 'best')")
     args = ap.parse_args()
 
     if not args.tsv.exists():
@@ -155,6 +160,30 @@ def main():
         return 1
 
     rows = load_tsv(args.tsv)
+
+    if args.reproduce:
+        target = args.reproduce
+        if target == "best":
+            ranked = rank_experiments(rows)
+            if not ranked:
+                print("No valid results.", file=sys.stderr)
+                return 1
+            row = ranked[0]
+        else:
+            matches = [r for r in rows if r.get("run_id") == target]
+            if not matches:
+                print(f"run_id '{target}' not found in results.tsv", file=sys.stderr)
+                return 1
+            row = matches[0]
+
+        summary = row.get("config_summary", "")
+        cfg = parse_summary(summary)
+        print(f"# Reproduce: {row.get('run_id')} ({row.get('output_tps', 0):.1f} tok/s)")
+        print(f"# Config: {summary}")
+        print()
+        print(reproduce_command(cfg))
+        return 0
+
     json_results = load_json_results(args.json_dir) if args.json_dir.exists() else []
 
     report = generate_report(rows, json_results)

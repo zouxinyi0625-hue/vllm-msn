@@ -126,7 +126,7 @@ def main():
                     help="Print what would be submitted without actually submitting")
     args = ap.parse_args()
 
-    results_tsv = args.results_tsv or SCRIPT_DIR / "results.tsv"
+    results_tsv = args.results_tsv or SCRIPT_DIR / "results_all.tsv"
 
     if args.status:
         history = read_results(results_tsv)
