@@ -161,6 +161,8 @@ def config_to_llm_kwargs(cfg: dict, scenario_cfg: dict) -> dict:
         kwargs["async_scheduling"] = cfg["async_scheduling"]
     if cfg.get("attention_backend"):
         kwargs["attention_backend"] = cfg["attention_backend"]
+    if cfg.get("hf_overrides"):
+        kwargs["hf_overrides"] = cfg["hf_overrides"]
     return kwargs
 
 
