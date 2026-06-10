@@ -212,3 +212,74 @@ curl https://fabricrouter-azureglobalprivate.ingress-dlis.ingress.cus.microsoft-
 - **Throughput is comparable** — DLIS real A100 40GB matches local simulated 40GB (~1270-1293 output tok/s).
 - **TTFT is better on DLIS** (13.7s vs 17.7s) — likely due to real 40GB HBM bandwidth vs simulated constraint.
 - **TPOT/ITL slightly higher on DLIS** (~15ms vs ~12ms) — minor variance, possibly due to network overhead or different GPU clock profiles.
+
+---
+
+## Part 4: DFlash Speculative Decoding (PR #41703)
+
+### Setup
+
+- **vLLM version**: 0.20.2rc1.dev208+g8cb2db160 (built from PR #41703)
+- **Hardware**: A100 80GB ×1, CUDA 13.0
+- **DFlash model**: `z-lab/gemma-4-26B-A4B-it-DFlash`
+- **Base model**: `/tmp/models/gemma4/text_only` (FP8)
+- **Date**: 2026-06-10
+
+### Build Notes
+
+Building vLLM from PR source requires fixes for runtime-only CUDA images:
+
+```bash
+# Required env vars
+export CUDA_HOME=/usr/local/cuda
+export CMAKE_PREFIX_PATH=/usr/local/cuda
+export TORCH_CUDA_ARCH_LIST="9.0"   # Single arch saves 5-7x build time
+export MAX_JOBS=8                    # Prevent OOM on 96-core machines
+export FLASHINFER_DISABLE_VERSION_CHECK=1  # Runtime: bypass version mismatch
+
+# Fix missing nvrtc symlink
+ln -s /usr/local/cuda/lib64/libnvrtc.so.12 /usr/local/cuda/lib64/libnvrtc.so
+
+# Install
+pip install -v -U "vllm @ git+https://github.com/vllm-project/vllm.git@refs/pull/41703/head"
+```
+
+### Results
+
+| Config | num_spec_tokens | max_num_seqs | mnbt | Status | Output tok/s (observed) |
+|--------|:---:|:---:|:---:|---|:---:|
+| DFlash k=15 | 15 | 128 | 16384 | **OOM** | — |
+| DFlash k=5 | 5 | 128 | 16384 | **Crashed at 920/1000** | ~1862 |
+
+### DFlash k=5 Crash Details
+
+- Progress: 92% (920/1000 prompts), running ~10 min before crash
+- Observed speed: input 6212.83 toks/s, output 1862.51 toks/s
+- Model loading: 25.64 GiB (vs ~14 GiB for base FP8 without DFlash)
+- GPU usage: 77827/81920 MiB
+
+**Error**: `IndexError: list index out of range` in `gpu_model_runner.py:1432` (`correct_spec_decode_token_counts`)
+
+```
+num_accepted = valid_sampled_token_count[prev_req_index] - 1
+               ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+IndexError: list index out of range
+```
+
+This is a bug in the DFlash implementation — triggers when many concurrent requests finish simultaneously (80 active requests at crash time). Not an OOM or configuration issue.
+
+### DFlash k=15 OOM Analysis
+
+- DFlash draft model adds ~11 GiB overhead (total model load: 25.64 GiB vs ~14 GiB base FP8)
+- k=15 requires 3× more KV cache slots per request than MTP k=5
+- Verification forward pass for all 15 draft tokens exceeds available memory with mnbt=16384
+
+### Comparison vs E011 (MTP k=5)
+
+| Method | Output tok/s | Status | Notes |
+|--------|:---:|---|---|
+| MTP k=5 (E011) | **2020** | ✓ Complete | Stable, full 1000 prompts |
+| DFlash k=5 | ~1862 | ✗ Crashed 920/1000 | Bug in PR, ~8% slower before crash |
+| DFlash k=15 | — | ✗ OOM | Needs lower mnbt or max_num_seqs |
+
+**Conclusion**: DFlash PR #41703 is not yet stable for production benchmarking. The observed ~1862 tok/s (before crash) is ~8% slower than MTP k=5 (2020 tok/s), but this comparison is incomplete due to the crash.
