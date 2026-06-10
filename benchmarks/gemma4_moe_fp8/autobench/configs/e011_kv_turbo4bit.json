@@ -7,6 +7,7 @@
     "spec_tokens": 5,
     "quantization": "fp8",
     "kv_cache_dtype": "turboquant_4bit_nc",
+    "kv_cache_dtype_skip_layers": ["sliding_window"],
     "hf_overrides": {"text_config": {"use_bidirectional_attention": null}},
     "enforce_eager": false
 }

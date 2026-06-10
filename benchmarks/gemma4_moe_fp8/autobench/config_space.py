@@ -163,6 +163,8 @@ def config_to_llm_kwargs(cfg: dict, scenario_cfg: dict) -> dict:
         kwargs["attention_backend"] = cfg["attention_backend"]
     if cfg.get("hf_overrides"):
         kwargs["hf_overrides"] = cfg["hf_overrides"]
+    if cfg.get("kv_cache_dtype_skip_layers"):
+        kwargs["kv_cache_dtype_skip_layers"] = cfg["kv_cache_dtype_skip_layers"]
     return kwargs
 
 
