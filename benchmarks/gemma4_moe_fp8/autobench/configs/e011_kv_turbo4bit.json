@@ -1,0 +1,11 @@
+{
+    "model": "/tmp/models/gemma4/text_only",
+    "max_num_seqs": 128,
+    "max_num_batched_tokens": 16384,
+    "gpu_memory_utilization": 0.95,
+    "max_model_len": 24576,
+    "spec_tokens": 5,
+    "quantization": "fp8",
+    "kv_cache_dtype": "turboquant_4bit_nc",
+    "enforce_eager": false
+}
