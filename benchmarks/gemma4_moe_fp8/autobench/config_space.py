@@ -159,6 +159,8 @@ def config_to_llm_kwargs(cfg: dict, scenario_cfg: dict) -> dict:
         kwargs["enable_chunked_prefill"] = cfg["enable_chunked_prefill"]
     if "async_scheduling" in cfg:
         kwargs["async_scheduling"] = cfg["async_scheduling"]
+    if cfg.get("attention_backend"):
+        kwargs["attention_backend"] = cfg["attention_backend"]
     return kwargs
 
 

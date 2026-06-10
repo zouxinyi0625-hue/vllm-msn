@@ -7,5 +7,6 @@
     "spec_tokens": 5,
     "quantization": "fp8",
     "kv_cache_dtype": "turboquant_4bit_nc",
+    "attention_backend": "TURBOQUANT",
     "enforce_eager": false
 }
