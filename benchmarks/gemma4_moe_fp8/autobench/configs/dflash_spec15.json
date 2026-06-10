@@ -1,5 +1,5 @@
 {
-    "model": "google/gemma-4-26B-A4B-it",
+    "model": "/tmp/models/gemma4/text_only",
     "max_num_seqs": 128,
     "max_num_batched_tokens": 16384,
     "gpu_memory_utilization": 0.95,
