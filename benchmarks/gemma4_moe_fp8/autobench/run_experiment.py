@@ -225,7 +225,7 @@ def save_result(result: dict):
 
     result_file = RESULTS_DIR / f"{run_id}.json"
     with result_file.open("w") as f:
-        json.dump(result, f, indent=2)
+        json.dump(result, f, indent=2, default=str)
 
     header_needed = not RESULTS_TSV.exists()
     with RESULTS_TSV.open("a", encoding="utf-8") as f:
