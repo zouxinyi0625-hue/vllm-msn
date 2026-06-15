@@ -1,0 +1,14 @@
+{
+    "max_num_seqs": 128,
+    "max_num_batched_tokens": 24576,
+    "gpu_memory_utilization": 0.95,
+    "max_model_len": 24576,
+    "spec_tokens": 7,
+    "quantization": "fp8",
+    "kv_cache_dtype": "auto",
+    "enforce_eager": false,
+    "VLLM_MOE_USE_DEEP_GEMM": "1",
+    "VLLM_USE_FUSED_MOE_GROUPED_TOPK": "1",
+    "VLLM_FLASHINFER_MOE_BACKEND": "throughput",
+    "VLLM_HUMMING_MOE_GEMM_TYPE": "grouped"
+}

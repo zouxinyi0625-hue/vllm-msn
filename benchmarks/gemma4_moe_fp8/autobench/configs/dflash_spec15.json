@@ -1,0 +1,15 @@
+{
+    "model": "/tmp/models/gemma4/text_only",
+    "max_num_seqs": 128,
+    "max_num_batched_tokens": 16384,
+    "gpu_memory_utilization": 0.95,
+    "max_model_len": 24576,
+    "quantization": "fp8",
+    "kv_cache_dtype": "auto",
+    "enforce_eager": false,
+    "speculative_config": {
+        "method": "dflash",
+        "model": "z-lab/gemma-4-26B-A4B-it-DFlash",
+        "num_speculative_tokens": 15
+    }
+}
