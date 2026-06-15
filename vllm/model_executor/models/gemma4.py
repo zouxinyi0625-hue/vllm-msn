@@ -701,42 +701,43 @@ class Gemma4DecoderLayer(nn.Module):
         per_layer_input: torch.Tensor | None = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # Gemma4 residual pattern:
-        # 1. input_norm(x) → attn → post_attn_norm → ADD residual
-        # 2. pre_ff_norm → mlp → post_ff_norm → ADD residual
         residual = hidden_states
 
+        torch.cuda.nvtx.range_push("gemma4:attn")
         hidden_states = self.input_layernorm(residual)
-
         hidden_states = self.self_attn(
             positions=positions,
             hidden_states=hidden_states,
             **kwargs,
         )
-
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = hidden_states + residual
+        torch.cuda.nvtx.range_pop()
+
         residual = hidden_states
 
-        # MLP runs unconditionally (same inputs for MoE and non-MoE)
+        torch.cuda.nvtx.range_push("gemma4:mlp")
         hidden_states = self.pre_feedforward_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
+        torch.cuda.nvtx.range_pop()
 
         if self.enable_moe_block:
-            hidden_states_1 = self.post_feedforward_layernorm_1(hidden_states)
-
-            # Router and MoE experts see the residual (pre-MLP state),
-            # matching the HF transformers forward path
+            torch.cuda.nvtx.range_push("gemma4:router")
             router_logits = self.router(residual)
+            torch.cuda.nvtx.range_pop()
+
+            torch.cuda.nvtx.range_push("gemma4:moe")
+            hidden_states_1 = self.post_feedforward_layernorm_1(hidden_states)
             hidden_states_2 = self.pre_feedforward_layernorm_2(residual)
             hidden_states_2 = self.moe(hidden_states_2, router_logits)
             hidden_states_2 = self.post_feedforward_layernorm_2(hidden_states_2)
-
-            # Combine MLP and MoE outputs
             hidden_states = hidden_states_1 + hidden_states_2
+            torch.cuda.nvtx.range_pop()
 
+        torch.cuda.nvtx.range_push("gemma4:post_ff")
         hidden_states = self.post_feedforward_layernorm(hidden_states)
         hidden_states = hidden_states + residual
+        torch.cuda.nvtx.range_pop()
 
         # Apply PLE (Per-Layer Embedding) if configured
         if per_layer_input is not None and self.per_layer_input_gate is not None:

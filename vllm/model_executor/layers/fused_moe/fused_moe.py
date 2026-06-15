@@ -1669,6 +1669,22 @@ def fused_experts_impl(
         ignore_invalid_experts=True,
     )
 
+    if os.environ.get("VLLM_MOE_PADDING_LOG"):
+        _moe_padding_log_counter = getattr(
+            fused_experts_impl, "_padding_counter", 0
+        )
+        fused_experts_impl._padding_counter = _moe_padding_log_counter + 1
+        if _moe_padding_log_counter % 100 == 0:
+            actual = num_tokens * top_k_num
+            padded = num_tokens_post_padded.item()
+            logger.info(
+                "moe_padding: actual=%d padded=%d ratio=%.2fx "
+                "experts=%d top_k=%d block_m=%d",
+                actual, padded, padded / max(actual, 1),
+                global_num_experts, top_k_num,
+                config["BLOCK_SIZE_M"],
+            )
+
     dispatch_fused_moe_kernel(
         qhidden_states,
         w1,
