@@ -250,3 +250,4 @@ outputs/
 .deps/
 examples/experiment_results/
 benchmarks/gemma4_moe_fp8/datasets/
+benchmarks/gemma4_moe_fp8/autobench/vllm_source/

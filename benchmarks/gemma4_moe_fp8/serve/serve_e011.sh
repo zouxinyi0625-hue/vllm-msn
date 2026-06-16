@@ -9,6 +9,8 @@ TP_SIZE=${2:-1}
 MAX_LEN=${3:-24576}
 GPU_UTIL=${4:-0.95}
 SERVED_NAME=${5:-"gemma4"}
+MAX_NUM_SEQS=${6:-128}
+MAX_BATCHED_TOKENS=${7:-16384}
 
 # --- 2. Model Path Resolution ---
 # Expects 3 folders under _ModelDataPath_:
@@ -49,6 +51,7 @@ echo "Starting vLLM server (E011 optimal config)..."
 echo "  Model: $model"
 echo "  Spec model: ${spec_model:-DISABLED}"
 echo "  Port: $PORT, TP: $TP_SIZE, MaxLen: $MAX_LEN, GPU_UTIL: $GPU_UTIL"
+echo "  MaxNumSeqs: $MAX_NUM_SEQS, MaxBatchedTokens: $MAX_BATCHED_TOKENS"
 
 vllm serve "$model" \
   --served-model-name "$SERVED_NAME" \
@@ -60,8 +63,8 @@ vllm serve "$model" \
   --quantization fp8 \
   --kv-cache-dtype auto \
   --trust-remote-code \
-  --max-num-seqs 128 \
-  --max-num-batched-tokens 16384 \
+  --max-num-seqs "$MAX_NUM_SEQS" \
+  --max-num-batched-tokens "$MAX_BATCHED_TOKENS" \
   --async-scheduling \
   --no-enable-log-requests \
   $SPEC_ARGS
