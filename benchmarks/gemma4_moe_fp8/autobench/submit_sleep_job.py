@@ -52,7 +52,7 @@ res_cfg = JobResourceConfiguration(
 if __name__ == "__main__":
     job = command(
         command="sleep infinity",
-        environment="azureml:vllm_gemma4:4",
+        environment="azureml:vllm_gemma4:5",
         compute=VC_ARM_ID,
         resources=res_cfg,
         inputs={
