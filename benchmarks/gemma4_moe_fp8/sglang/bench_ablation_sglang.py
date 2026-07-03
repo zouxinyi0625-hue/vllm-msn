@@ -392,8 +392,8 @@ def run_experiment(
         context_length=sc_cfg["max_model_len"],
         mem_fraction_static=mem_frac,
         enable_torch_compile=use_torch_compile,
-        # Scheduling: use longest-prefix-match for shared chat template prefixes
-        schedule_policy="lpm",
+        schedule_policy="fcfs",
+        disable_radix_cache=True,
         log_level="info",
     )
 
@@ -401,8 +401,10 @@ def run_experiment(
     if exp_cfg["quantization"]:
         engine_kwargs["quantization"] = exp_cfg["quantization"]
 
-    # Max running requests (equivalent to vLLM max_num_seqs)
-    engine_kwargs["max_running_requests"] = exp_cfg["max_num_seqs"]
+    # Max running requests: cap to avoid KV cache thrashing in offline batch.
+    # SGLang retracts (evicts + re-prefills) when KV pool is full, unlike vLLM
+    # which swaps to CPU. Limiting concurrency prevents retract storms.
+    engine_kwargs["max_running_requests"] = min(exp_cfg["max_num_seqs"], 32)
 
     # Chunked prefill size (equivalent to vLLM max_num_batched_tokens)
     engine_kwargs["chunked_prefill_size"] = sc_cfg["max_num_batched_tokens"]
