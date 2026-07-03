@@ -36,7 +36,8 @@ echo "  Model: $model"
 echo "  Spec model: ${spec_model:-DISABLED}"
 echo "  Port: $PORT, MemFrac: $MEM_FRAC, MaxRunning: $MAX_RUNNING, MaxLen: $MAX_LEN"
 
-sglang serve "$model" \
+sglang serve \
+  --model-path "$model" \
   --port "$PORT" \
   --host 0.0.0.0 \
   --dtype bfloat16 \
