@@ -394,6 +394,7 @@ def run_experiment(
         enable_torch_compile=use_torch_compile,
         # Scheduling: use longest-prefix-match for shared chat template prefixes
         schedule_policy="lpm",
+        log_level="info",
     )
 
     # Quantization
