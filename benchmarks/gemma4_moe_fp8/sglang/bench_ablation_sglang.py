@@ -103,6 +103,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="full",
+        kv_cache_dtype=None,
     ),
     "S002": dict(
         label="BF16 + CUDA graphs — compare vLLM E001 with CG",
@@ -112,25 +113,28 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="full",
+        kv_cache_dtype=None,
     ),
     "S003": dict(
-        label="BF16 + CG + EAGLE3 spec k=5 — compare vLLM E005 (minus FP8)",
+        label="BF16 + CG + NEXTN spec k=5 — compare vLLM E005 (minus FP8)",
         quantization=None,
         cuda_graphs=True,
         speculative=True, spec_k=5,
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="full",
+        kv_cache_dtype=None,
     ),
     # === Group B: text-only model ===
     "S004": dict(
-        label="BF16 + CG + EAGLE3 k=5 + text-only — best candidate",
+        label="BF16 + CG + NEXTN k=5 + text-only — best candidate",
         quantization=None,
         cuda_graphs=True,
         speculative=True, spec_k=5,
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     "S005": dict(
         label="BF16 + CG + text-only (no spec) — isolate spec contribution",
@@ -140,6 +144,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     # === Group C: Batch size sweep (from S004) ===
     "S006": dict(
@@ -150,6 +155,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=64,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     "S007": dict(
         label="batch sweep: mns=192",
@@ -159,6 +165,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=192,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     "S008": dict(
         label="batch sweep: mns=256",
@@ -168,6 +175,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=256,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     # === Group D: gpu_mem sweep (from S004) ===
     "S009": dict(
@@ -178,6 +186,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.80,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     "S010": dict(
         label="gpu_mem sweep: 0.95",
@@ -187,6 +196,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.95,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     # === Group E: Isolation experiments ===
     "S011": dict(
@@ -197,6 +207,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     "S012": dict(
         label="no CUDA graphs at optimal (isolates CG) — compare vLLM E013",
@@ -206,6 +217,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="text_only",
+        kv_cache_dtype=None,
     ),
     # === Group F: W8A8 quantization ===
     "S013": dict(
@@ -216,6 +228,7 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="full",
+        kv_cache_dtype=None,
     ),
     "S014": dict(
         label="W8A8_INT8 + CG + NEXTN spec k=5",
@@ -225,6 +238,38 @@ EXPERIMENTS: dict[str, dict] = {
         max_num_seqs=128,
         gpu_memory_utilization=0.90,
         model_variant="full",
+        kv_cache_dtype=None,
+    ),
+    # === Group G: FP8 KV cache + speculative (official serve config) ===
+    "S015": dict(
+        label="BF16 + CG + NEXTN k=5 + FP8 KV cache — official serve config",
+        quantization=None,
+        cuda_graphs=True,
+        speculative=True, spec_k=5,
+        max_num_seqs=128,
+        gpu_memory_utilization=0.85,
+        model_variant="full",
+        kv_cache_dtype="fp8_e4m3",
+    ),
+    "S016": dict(
+        label="BF16 + CG + NEXTN k=5 + FP8 KV + text-only",
+        quantization=None,
+        cuda_graphs=True,
+        speculative=True, spec_k=5,
+        max_num_seqs=128,
+        gpu_memory_utilization=0.85,
+        model_variant="text_only",
+        kv_cache_dtype="fp8_e4m3",
+    ),
+    "S017": dict(
+        label="BF16 + CG + FP8 KV + no spec — isolate FP8 KV contribution",
+        quantization=None,
+        cuda_graphs=True,
+        speculative=False, spec_k=0,
+        max_num_seqs=128,
+        gpu_memory_utilization=0.85,
+        model_variant="full",
+        kv_cache_dtype="fp8_e4m3",
     ),
 }
 
@@ -333,9 +378,8 @@ def run_experiment(
 
     # Build SGLang Engine kwargs
     # SGLang mem_fraction_static is the fraction of *remaining* memory (after model)
-    # allocated to KV cache. Unlike vLLM's gpu_memory_utilization (total budget),
-    # setting this too high starves CUDA graphs. Use 0.80 to leave room for graphs.
-    mem_frac = min(exp_cfg["gpu_memory_utilization"], 0.80)
+    # allocated to KV cache.
+    mem_frac = exp_cfg["gpu_memory_utilization"]
 
     # torch_compile conflicts with CUDA graphs on large models — compiled kernels
     # consume too much memory leaving no room for graph capture beyond bs=1.
@@ -367,6 +411,10 @@ def run_experiment(
     # Use disable_cuda_graph=True to disable (equivalent to vLLM enforce_eager=True).
     if not exp_cfg["cuda_graphs"]:
         engine_kwargs["disable_cuda_graph"] = True
+
+    # KV cache dtype (fp8_e4m3 for reduced memory footprint)
+    if exp_cfg.get("kv_cache_dtype"):
+        engine_kwargs["kv_cache_dtype"] = exp_cfg["kv_cache_dtype"]
 
     # Speculative decoding (NEXTN for Gemma 4 — matches official config)
     if exp_cfg["speculative"]:
@@ -459,7 +507,7 @@ def run_experiment(
             "label": exp_cfg["label"],
             "scenario": scenario,
             "quantization": str(exp_cfg["quantization"]),
-            "kv_cache_dtype": "auto",
+            "kv_cache_dtype": exp_cfg.get("kv_cache_dtype") or "auto",
             "attention_backend": "sglang_default",
             "enforce_eager": not exp_cfg["cuda_graphs"],
             "mtp": exp_cfg["speculative"],
