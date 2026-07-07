@@ -6,6 +6,10 @@ This file records the 26B Gemma4 MoE alignment runs used to validate the new `be
 
 - Date: 2026-07-07
 - Branch: `feat/gemma4-12b-fp8-bench`
+- Runtime image note:
+  - 26B alignment originally worked on `vllm_gemma4:3`.
+  - 12B dense runs require the newer `vllm_gemma4:6` image, based on `vllm/vllm-openai:gemma4-unified`.
+  - `vllm_gemma4:3` cannot run the 12B checkpoints because they use newer `gemma4_unified` / `gemma4_unified_assistant` configs.
 - Server path used by user:
   ```text
   /scratch/azureml/cr/j/574c7ade511e4bb08b1db2772cdac624/exe/wd/vllm-msn/benchmarks/gemma4_12b_fp8

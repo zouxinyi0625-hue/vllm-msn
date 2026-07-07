@@ -45,6 +45,28 @@ gemma4_12b_fp8/
 └── RESULTS.md
 ```
 
+## Runtime image requirement
+
+For 12B dense experiments, use the newer unified Gemma4 image:
+
+```text
+vllm_gemma4:6
+```
+
+This image is based on:
+
+```text
+vllm/vllm-openai:gemma4-unified
+```
+
+The older image used for the first 26B alignment work:
+
+```text
+vllm_gemma4:3
+```
+
+cannot run the 12B checkpoints because the 12B target/assistant use newer `gemma4_unified` / `gemma4_unified_assistant` configs and require the unified Gemma4 support path.
+
 ## 12B model download
 
 Default model root:
