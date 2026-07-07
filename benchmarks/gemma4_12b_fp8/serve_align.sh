@@ -2,7 +2,8 @@
 # Serve a Gemma4 alignment config through vLLM OpenAI-compatible API.
 # Usage: bash serve_align.sh configs/26b_e011_mtp.json [PORT]
 set -euo pipefail
-cd "$(dirname "$0")"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+cd "$(dirname "$SCRIPT_PATH")"
 
 CONFIG=${1:-configs/26b_e011_mtp.json}
 PORT=${2:-8100}
@@ -43,14 +44,21 @@ export VLLM_USE_FLASHINFER_MOE_FP8=${VLLM_USE_FLASHINFER_MOE_FP8:-$(read_json en
 export VLLM_USE_FLASHINFER_SAMPLER=${VLLM_USE_FLASHINFER_SAMPLER:-$(read_json env.VLLM_USE_FLASHINFER_SAMPLER)}
 export VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM:-$(read_json env.VLLM_MOE_USE_DEEP_GEMM)}
 
-# Local/server overrides without editing JSON.
-if [[ -n "${GEMMA4_26B_TEXT_ONLY_MODEL_PATH:-}" ]]; then
+# Local/server overrides without editing JSON. Generic variables are preferred;
+# 26B-specific variables are kept for backward compatibility with the alignment run.
+if [[ -n "${GEMMA4_MODEL_PATH:-}" ]]; then
+  MODEL="$GEMMA4_MODEL_PATH"
+elif [[ -n "${GEMMA4_26B_TEXT_ONLY_MODEL_PATH:-}" ]]; then
   MODEL="$GEMMA4_26B_TEXT_ONLY_MODEL_PATH"
+elif [[ -n "${_ModelDataPath_:-}" && -d "${_ModelDataPath_}/model" ]]; then
+  MODEL="${_ModelDataPath_}/model"
 elif [[ -n "${_ModelDataPath_:-}" && -d "${_ModelDataPath_}/text_only" ]]; then
   MODEL="${_ModelDataPath_}/text_only"
 fi
 
-if [[ -n "${GEMMA4_26B_ASSISTANT_MODEL_PATH:-}" ]]; then
+if [[ -n "${GEMMA4_ASSISTANT_MODEL_PATH:-}" ]]; then
+  ASSISTANT="$GEMMA4_ASSISTANT_MODEL_PATH"
+elif [[ -n "${GEMMA4_26B_ASSISTANT_MODEL_PATH:-}" ]]; then
   ASSISTANT="$GEMMA4_26B_ASSISTANT_MODEL_PATH"
 elif [[ -n "${_ModelDataPath_:-}" && -d "${_ModelDataPath_}/assistant" ]]; then
   ASSISTANT="${_ModelDataPath_}/assistant"

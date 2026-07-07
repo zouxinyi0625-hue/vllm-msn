@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Benchmark a running vLLM server with the unchanged sc1_delta_v2 dataset.
 set -euo pipefail
-cd "$(dirname "$0")"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+cd "$(dirname "$SCRIPT_PATH")"
 
 CONFIG="configs/26b_e011_mtp.json"
 HOST="localhost"
@@ -11,6 +12,7 @@ NUM_PROMPTS=""
 MAX_CONCURRENCY="32"
 REQUEST_RATE="inf"
 OUTPUT_DIR="online_results"
+EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,7 +25,7 @@ while [[ $# -gt 0 ]]; do
     --request-rate) REQUEST_RATE="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     -h|--help)
-      sed -n '1,80p' "$0"
+      sed -n '1,80p' "$SCRIPT_PATH"
       exit 0
       ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
@@ -54,6 +56,9 @@ DEFAULT_NUM_PROMPTS=$(read_json num_prompts)
 MAX_TOKENS=$(read_json max_tokens)
 
 NUM_PROMPTS=${NUM_PROMPTS:-$DEFAULT_NUM_PROMPTS}
+if [[ -n "${GEMMA4_TOKENIZER:-}" ]]; then
+  TOKENIZER="$GEMMA4_TOKENIZER"
+fi
 DATASET_ABS=$(python3 - "$DATASET_PATH" <<'PY'
 from pathlib import Path
 import sys
@@ -62,6 +67,16 @@ p = Path(sys.argv[1])
 print(p if p.is_absolute() else (script_dir / p).resolve())
 PY
 )
+
+case "${MAX_CONCURRENCY,,}" in
+  none|inf|infinite|unlimited|0)
+    MAX_CONCURRENCY_LABEL="none"
+    ;;
+  *)
+    MAX_CONCURRENCY_LABEL="$MAX_CONCURRENCY"
+    EXTRA_ARGS+=(--max-concurrency "$MAX_CONCURRENCY")
+    ;;
+esac
 
 mkdir -p "$OUTPUT_DIR"
 RESULT_FILE="${OUTPUT_DIR}/${NAME}_online_$(date +%Y%m%d_%H%M%S).txt"
@@ -79,7 +94,7 @@ echo "Dataset        : $DATASET_ABS"
 echo "Prompts        : $NUM_PROMPTS"
 echo "Max tokens     : $MAX_TOKENS"
 echo "Request rate   : $REQUEST_RATE"
-echo "Max concurrency: $MAX_CONCURRENCY"
+echo "Max concurrency: $MAX_CONCURRENCY_LABEL"
 echo "Result         : $RESULT_FILE"
 echo ""
 
@@ -94,5 +109,5 @@ vllm bench serve \
   --num-prompts "$NUM_PROMPTS" \
   --output-len "$MAX_TOKENS" \
   --request-rate "$REQUEST_RATE" \
-  --max-concurrency "$MAX_CONCURRENCY" \
+  "${EXTRA_ARGS[@]}" \
   2>&1 | tee "$RESULT_FILE"

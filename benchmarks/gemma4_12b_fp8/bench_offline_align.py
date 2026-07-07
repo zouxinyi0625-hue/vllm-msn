@@ -42,10 +42,24 @@ def apply_env(cfg: dict[str, Any]) -> None:
 
 
 def override_model_paths(cfg: dict[str, Any]) -> None:
-    """Allow server/GPU nodes to override local model paths without editing JSON."""
-    if os.environ.get("GEMMA4_26B_TEXT_ONLY_MODEL_PATH"):
+    """Allow server/GPU nodes to override local model paths without editing JSON.
+
+    Generic variables are preferred for new 12B/26B configs:
+      - GEMMA4_MODEL_PATH
+      - GEMMA4_ASSISTANT_MODEL_PATH
+
+    Legacy 26B-specific variables are still supported for old alignment commands:
+      - GEMMA4_26B_TEXT_ONLY_MODEL_PATH
+      - GEMMA4_26B_ASSISTANT_MODEL_PATH
+    """
+    if os.environ.get("GEMMA4_MODEL_PATH"):
+        cfg["model"] = os.environ["GEMMA4_MODEL_PATH"]
+    elif os.environ.get("GEMMA4_26B_TEXT_ONLY_MODEL_PATH"):
         cfg["model"] = os.environ["GEMMA4_26B_TEXT_ONLY_MODEL_PATH"]
-    if os.environ.get("GEMMA4_26B_ASSISTANT_MODEL_PATH"):
+
+    if os.environ.get("GEMMA4_ASSISTANT_MODEL_PATH"):
+        cfg["assistant_model"] = os.environ["GEMMA4_ASSISTANT_MODEL_PATH"]
+    elif os.environ.get("GEMMA4_26B_ASSISTANT_MODEL_PATH"):
         cfg["assistant_model"] = os.environ["GEMMA4_26B_ASSISTANT_MODEL_PATH"]
 
 

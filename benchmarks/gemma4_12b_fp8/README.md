@@ -33,12 +33,93 @@ gemma4_12b_fp8/
 ├── README.md
 ├── configs/
 │   ├── 26b_e011_mtp.json
-│   └── 26b_e011_no_mtp.json
+│   ├── 26b_e011_no_mtp.json
+│   ├── 12b_e011_mtp.json
+│   └── 12b_e011_no_mtp.json
+├── download_12b_models.sh
 ├── run_offline_align.sh
 ├── bench_offline_align.py
 ├── serve_align.sh
-└── bench_online_align.sh
+├── bench_online_align.sh
+├── run_online_align.sh
+└── RESULTS.md
 ```
+
+## 12B model download
+
+Default model root:
+
+```text
+/tmp/models/gemma4_12b
+```
+
+Download target and assistant:
+
+```bash
+cd benchmarks/gemma4_12b_fp8
+bash download_12b_models.sh /tmp/models/gemma4_12b
+```
+
+Equivalent explicit commands:
+
+```bash
+hf download google/gemma-4-12B-it \
+  --local-dir /tmp/models/gemma4_12b/model
+
+hf download google/gemma-4-12B-it-assistant \
+  --local-dir /tmp/models/gemma4_12b/assistant
+```
+
+Optional environment overrides:
+
+```bash
+export GEMMA4_MODEL_PATH=/tmp/models/gemma4_12b/model
+export GEMMA4_ASSISTANT_MODEL_PATH=/tmp/models/gemma4_12b/assistant
+```
+
+The checked-in 12B configs already point to these default paths, so the exports are only needed if you place models elsewhere.
+
+## 12B offline runs
+
+Run 12B MTP:
+
+```bash
+cd benchmarks/gemma4_12b_fp8
+bash run_offline_align.sh configs/12b_e011_mtp.json --reps 1 --prompts 1000
+```
+
+Run 12B no-MTP:
+
+```bash
+bash run_offline_align.sh configs/12b_e011_no_mtp.json --reps 1 --prompts 1000
+```
+
+## 12B online runs
+
+One-shot online MTP with unlimited client concurrency:
+
+```bash
+cd benchmarks/gemma4_12b_fp8
+bash run_online_align.sh configs/12b_e011_mtp.json --max-concurrency none --num-prompts 1000
+```
+
+One-shot online MTP with max concurrency 32:
+
+```bash
+bash run_online_align.sh configs/12b_e011_mtp.json --max-concurrency 32 --num-prompts 1000
+```
+
+Manual two-shell mode is still supported:
+
+```bash
+# Shell 1
+bash serve_align.sh configs/12b_e011_mtp.json 8100
+
+# Shell 2
+bash bench_online_align.sh --port 8100 --config configs/12b_e011_mtp.json --num-prompts 1000 --max-concurrency none
+```
+
+Use no-MTP online by replacing the config path with `configs/12b_e011_no_mtp.json`.
 
 ## Dataset prerequisite
 
