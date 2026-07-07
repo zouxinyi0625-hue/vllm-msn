@@ -163,6 +163,82 @@ Per-position acceptance:
 | 3 | 74.23 |
 | 4 | 67.54 |
 
+## 12B Online Result — MTP, A100 80GB, Unlimited Concurrency
+
+This run used the `vllm_gemma4:6` / `vllm/vllm-openai:gemma4-unified` image and the 12B MTP config:
+
+```text
+configs/12b_e011_mtp.json
+```
+
+Bench command characteristics from vLLM output:
+
+- Backend: `openai-chat`
+- Base URL: `http://localhost:8100`
+- Served model: `gemma4-12b`
+- Tokenizer: `/tmp/models/gemma4_12b/model`
+- Dataset: unchanged `sc1_delta_v2.jsonl`
+- Output length cap: 8192
+- Request rate: `inf`
+- Max concurrency: `None` / unlimited
+- Peak concurrent requests: 1000
+
+### Summary table
+
+| Metric | Value |
+|---|---:|
+| Successful requests | 1000 |
+| Failed requests | 0 |
+| Benchmark duration (s) | 1354.43 |
+| Request throughput (req/s) | 0.74 |
+| Total input tokens | 4,371,285 |
+| Total generated tokens | 1,535,504 |
+| Output token throughput (tok/s) | **1133.69** |
+| Peak output token throughput (tok/s) | 642.00 |
+| Total token throughput (tok/s) | **4361.09** |
+| Peak concurrent requests | 1000 |
+
+### Latency
+
+| Metric | Mean | Median | P99 |
+|---|---:|---:|---:|
+| TTFT (ms) | 612,495.63 | 606,979.80 | 1,252,569.32 |
+| TPOT excl. first token (ms) | 114.34 | 108.77 | 273.50 |
+| ITL (ms) | 509.81 | 249.82 | 3,273.51 |
+
+High TTFT is expected for unlimited concurrency because all 1000 requests are queued at once.
+
+### Speculative decoding metrics
+
+| Metric | Value |
+|---|---:|
+| Acceptance rate (%) | 80.80 |
+| Acceptance length | 5.04 |
+| Drafts | 304,790 |
+| Draft tokens | 1,523,950 |
+| Accepted tokens | 1,231,329 |
+
+Per-position acceptance:
+
+| Draft position | Acceptance (%) |
+|---:|---:|
+| 0 | 93.97 |
+| 1 | 87.12 |
+| 2 | 80.75 |
+| 3 | 74.55 |
+| 4 | 67.61 |
+
+### Initial interpretation
+
+The 12B dense MTP run is much slower than 26B-A4B MTP on this A100 80GB setup:
+
+| Mode | Output tok/s | Total tok/s |
+|---|---:|---:|
+| 26B-A4B online MTP unlimited | 2113.78 | 8584.49 |
+| 12B dense online MTP unlimited | 1133.69 | 4361.09 |
+
+This is plausible because 26B-A4B is MoE with much lower active compute per token than a 12B dense model. The 12B MTP acceptance metrics are healthy and similar to 26B, so the throughput gap is likely dominated by target-model compute/backend path rather than poor speculative acceptance.
+
 ## Alignment vs Previous Results
 
 Previous `gemma4_moe_fp8/RESULTS.md` headline numbers:
