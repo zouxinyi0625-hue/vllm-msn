@@ -178,6 +178,55 @@ Per-position acceptance:
 | 3 | 74.23 |
 | 4 | 67.54 |
 
+## Online Result — EAGLE-3, A100 80GB, Unlimited Concurrency (2026-07-08)
+
+Official RedHatAI EAGLE-3 draft (`RedHatAI/gemma-4-26B-A4B-it-speculator.eagle3`)
++ FP8 text-only target, same dataset/concurrency/`spec_tokens=5` as the MTP run.
+Config is identical to `26b_e011_no_mtp` except the spec fields, so this is an
+apples-to-apples swap of MTP-assistant → EAGLE-3 draft.
+
+| Metric | EAGLE-3 | MTP baseline | vs MTP |
+|---|---:|---:|---:|
+| Output tok/s | **931.46** | 2113.78 | **−56%** |
+| Total tok/s | 3777.37 | 8584.49 | −56% |
+| **Acceptance rate (%)** | **9.75** | 80.58 | −70.8 pts |
+| **Acceptance length** | **1.49** | 5.03 | −3.54 |
+| Drafts | 961,132 | 284,215 | — |
+| Draft tokens | 4,805,660 | 1,421,075 | — |
+| Accepted tokens | 468,551 | 1,145,159 | — |
+| Mean TTFT (ms) | 619,992 | 313,680 | worse |
+| Mean TPOT (ms) | 110.23 | 58.09 | worse |
+
+Per-position acceptance (EAGLE-3):
+
+| Draft position | Acceptance (%) |
+|---:|---:|
+| 0 | 31.31 |
+| 1 | 10.56 |
+| 2 | 3.90 |
+| 3 | 1.85 |
+| 4 | 1.13 |
+
+### Conclusion — official EAGLE-3 draft does NOT work for this deployment
+
+The official EAGLE-3 draft achieves only **9.75% acceptance / 1.49 accept
+length** on the FP8 26B-A4B target, vs MTP's 80.58% / 5.03. Even position 0 is
+only 31% (MTP: 93.6%). This is net-negative speculative decoding: output
+throughput drops to **931 tok/s, ~56% below MTP (2113) and below even the
+no-MTP baseline (~1474/2023 offline / online)**. The three runs corroborate:
+
+| Setup | offline tok/s | online tok/s | online accept rate |
+|---|---:|---:|---:|
+| MTP (baseline) | 2023 | 2113 | 80.58% |
+| no-MTP (pure target) | ~1474 | 1474 | — |
+| **EAGLE-3 (official)** | **888** | **931** | **9.75%** |
+
+Likely causes: the draft was trained on bf16 `gemma-4-26B-A4B-it` (generic
+Magpie/UltraChat data), mismatched to the FP8 target and to the MAI Profile
+distribution; A100 lacks native FP8 (Marlin dequant). **This validates the
+project's core thesis: a generic off-the-shelf draft is not enough — we must
+train our own draft (EAGLE-3 and/or the MTP assistant) on MAI Profile data.**
+
 ## 12B Online Result — MTP, A100 80GB, Unlimited Concurrency
 
 This run used the `vllm_gemma4:6` / `vllm/vllm-openai:gemma4-unified` image and the 12B MTP config:
