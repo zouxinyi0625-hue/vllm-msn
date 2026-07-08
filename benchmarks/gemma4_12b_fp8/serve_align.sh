@@ -36,6 +36,8 @@ GPU_UTIL=$(read_json gpu_memory_utilization)
 QUANTIZATION=$(read_json quantization)
 KV_CACHE_DTYPE=$(read_json kv_cache_dtype)
 SPEC_TOKENS=$(read_json spec_tokens)
+SPEC_METHOD=$(read_json spec_method)
+SPECULATOR_MODEL=$(read_json speculator_model)
 ASYNC_SCHED=$(read_json async_scheduling)
 ENABLE_PREFIX_CACHING=$(read_json enable_prefix_caching)
 
@@ -92,7 +94,27 @@ fi
 if [[ "$ENABLE_PREFIX_CACHING" == "False" || "$ENABLE_PREFIX_CACHING" == "false" ]]; then
   ARGS+=(--no-enable-prefix-caching)
 fi
-if [[ "${SPEC_TOKENS:-0}" != "0" && -n "${ASSISTANT:-}" ]]; then
+if [[ -n "${GEMMA4_SPECULATOR_MODEL:-}" ]]; then
+  SPECULATOR_MODEL="$GEMMA4_SPECULATOR_MODEL"
+fi
+
+# Speculative decoding wiring.
+# - eagle3: self-contained speculator loaded via --speculative-config JSON.
+# - default (MTP): assistant draft loaded via --spec-model / --spec-tokens.
+if [[ "${SPEC_METHOD}" == "eagle3" ]]; then
+  if [[ "${SPEC_TOKENS:-0}" != "0" && -n "${SPECULATOR_MODEL:-}" ]]; then
+    SPEC_CONFIG_JSON=$(python3 - "$SPECULATOR_MODEL" "$SPEC_TOKENS" <<'PY'
+import json, sys
+print(json.dumps({
+    "model": sys.argv[1],
+    "num_speculative_tokens": int(sys.argv[2]),
+    "method": "eagle3",
+}))
+PY
+)
+    ARGS+=(--speculative-config "$SPEC_CONFIG_JSON")
+  fi
+elif [[ "${SPEC_TOKENS:-0}" != "0" && -n "${ASSISTANT:-}" ]]; then
   ARGS+=(--spec-model "$ASSISTANT" --spec-tokens "$SPEC_TOKENS")
 fi
 
@@ -100,6 +122,8 @@ echo "=== vLLM serve alignment ==="
 echo "Config       : $CONFIG ($NAME)"
 echo "Model        : $MODEL"
 echo "Assistant    : ${ASSISTANT:-DISABLED}"
+echo "Spec method  : ${SPEC_METHOD:-mtp}"
+echo "Speculator   : ${SPECULATOR_MODEL:-N/A}"
 echo "Port         : $PORT"
 echo "TP size      : $TP_SIZE"
 echo "Spec tokens  : ${SPEC_TOKENS:-0}"

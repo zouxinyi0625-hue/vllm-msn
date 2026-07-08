@@ -246,3 +246,58 @@ ${_ModelDataPath_}/assistant
 ## Next step for 12B dense
 
 After the 26B alignment is reproduced, add 12B dense configs beside the 26B configs, keeping dataset/sampling fixed first. Only change the model path and model-specific options initially so the result is comparable.
+
+## EAGLE-3 speculator benchmarking (draft-model exploration)
+
+`configs/26b_eagle3.json` benchmarks the official RedHatAI EAGLE-3 speculator
+against the MTP baseline, using the **same FP8 text-only target** so the only
+variable is the draft model / spec method. This is line 1 (Step A) of the
+draft-model roadmap (`DRAFT_MODEL_ROADMAP.md`).
+
+Key difference from the MTP configs: EAGLE-3 sets `spec_method: "eagle3"` and
+`speculator_model`, and `serve_align.sh` loads it via vLLM
+`--speculative-config '{"model": ..., "num_speculative_tokens": N, "method": "eagle3"}'`
+instead of `--spec-model` / `--spec-tokens` (which the MTP path still uses).
+
+Run it end-to-end (server + bench, unlimited concurrency, same as the MTP
+online run):
+
+```bash
+# Optional overrides (recommended on the server, same as MTP runs):
+export GEMMA4_26B_TEXT_ONLY_MODEL_PATH=/path/to/gemma4/text_only
+# If the FP8 target + EAGLE-3 draft combo fails to load, fall back to the
+# official bf16 target the checkpoint was validated against:
+#   edit "model" in the config to google/gemma-4-26B-A4B-it and drop quantization
+# Or point the draft at a local copy:
+export GEMMA4_SPECULATOR_MODEL=/path/to/eagle3_speculator
+
+bash run_online_align.sh configs/26b_eagle3.json --max-concurrency none --num-prompts 1000
+```
+
+The `vllm bench serve` output already prints the metrics we care about:
+Output token throughput (tok/s), Acceptance rate (%), Acceptance length, and
+Per-position acceptance (%).
+
+Then compare against the MTP baseline and check the +10~20% throughput goal:
+
+```bash
+python compare_spec_results.py --auto online_results/
+# or explicitly:
+python compare_spec_results.py \
+  --baseline 'online_results/26b_e011_mtp_online_*.txt' \
+  --candidate 'online_results/26b_eagle3_online_*.txt'
+```
+
+`compare_spec_results.py` is read-only: it parses existing result files and
+prints a side-by-side table with per-metric deltas and a MET/PARTIAL/REGRESSION
+verdict on output throughput. It does not run any benchmark itself.
+
+### Fairness note
+
+The MTP baseline (`26b_e011_mtp`, online 2113.78 tok/s, accept_len 5.03) and
+this EAGLE-3 run share the same FP8 text-only target, dataset
+(`sc1_delta_v2.jsonl`), 1000 prompts, output-len 8192, and unlimited
+concurrency. `spec_tokens=5` matches the MTP baseline's `k=5` for an
+apples-to-apples acceptance-length comparison (the RedHatAI card's example uses
+3; we override to 5).
+
