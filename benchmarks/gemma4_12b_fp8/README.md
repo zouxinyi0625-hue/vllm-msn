@@ -278,6 +278,22 @@ The `vllm bench serve` output already prints the metrics we care about:
 Output token throughput (tok/s), Acceptance rate (%), Acceptance length, and
 Per-position acceptance (%).
 
+### Offline EAGLE-3 run
+
+The offline path (`bench_offline_align.py`) supports EAGLE-3 too, matching the
+MTP offline baseline (`26b_e011_mtp`, offline 2023 tok/s). It reads the same
+`spec_method: eagle3` config and now also collects spec-decode metrics
+(acceptance rate/length + per-position) via `llm.get_metrics()`:
+
+```bash
+export GEMMA4_26B_TEXT_ONLY_MODEL_PATH=/path/to/gemma4/text_only
+python bench_offline_align.py --config configs/26b_eagle3.json --reps 1 --prompts 1000
+```
+
+Results are saved to `offline_results/26b_eagle3_<ts>.json` (includes a
+`spec_metrics` block). Both `--spec-model` (MTP) and `--speculative-config`
+(EAGLE-3) offline paths are wired through `build_llm_kwargs`.
+
 Then compare against the MTP baseline and check the +10~20% throughput goal:
 
 ```bash

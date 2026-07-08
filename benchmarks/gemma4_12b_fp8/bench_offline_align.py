@@ -62,6 +62,11 @@ def override_model_paths(cfg: dict[str, Any]) -> None:
     elif os.environ.get("GEMMA4_26B_ASSISTANT_MODEL_PATH"):
         cfg["assistant_model"] = os.environ["GEMMA4_26B_ASSISTANT_MODEL_PATH"]
 
+    # EAGLE-3 (and other --speculative-config methods) use a self-contained
+    # speculator model, overridable without editing JSON.
+    if os.environ.get("GEMMA4_SPECULATOR_MODEL"):
+        cfg["speculator_model"] = os.environ["GEMMA4_SPECULATOR_MODEL"]
+
 
 def load_prompts(dataset_path: Path, n: int) -> list[str]:
     prompts: list[str] = []
@@ -126,13 +131,99 @@ def build_llm_kwargs(cfg: dict[str, Any]) -> dict[str, Any]:
         kwargs["async_scheduling"] = cfg["async_scheduling"]
 
     spec_tokens = int(cfg.get("spec_tokens", 0) or 0)
+    spec_method = cfg.get("spec_method")
     assistant_model = cfg.get("assistant_model")
+    speculator_model = cfg.get("speculator_model")
     if spec_tokens > 0:
-        if not assistant_model:
-            raise ValueError("spec_tokens > 0 but assistant_model is empty")
-        kwargs["spec_model"] = assistant_model
-        kwargs["spec_tokens"] = spec_tokens
+        if spec_method == "eagle3":
+            # EAGLE-3 uses a self-contained speculator via speculative_config,
+            # mirroring the serve --speculative-config JSON path.
+            if not speculator_model:
+                raise ValueError(
+                    "spec_method=eagle3 requires 'speculator_model' (empty)"
+                )
+            kwargs["speculative_config"] = {
+                "model": speculator_model,
+                "num_speculative_tokens": spec_tokens,
+                "method": "eagle3",
+            }
+        else:
+            # Default: MTP assistant draft via spec_model / spec_tokens.
+            if not assistant_model:
+                raise ValueError("spec_tokens > 0 but assistant_model is empty")
+            kwargs["spec_model"] = assistant_model
+            kwargs["spec_tokens"] = spec_tokens
     return kwargs
+
+
+def collect_spec_metrics(llm) -> dict[str, Any] | None:
+    """Extract speculative-decoding metrics from an offline LLM engine.
+
+    Mirrors what ``vllm bench serve`` reports for the online path, using the
+    same vllm:spec_decode_* counters but read via ``llm.get_metrics()`` instead
+    of scraping the Prometheus endpoint. Returns None if spec decoding is off.
+
+    Metric names (see vllm/v1/metrics/reader.py):
+      - vllm:spec_decode_num_drafts
+      - vllm:spec_decode_num_draft_tokens
+      - vllm:spec_decode_num_accepted_tokens
+      - vllm:spec_decode_num_accepted_tokens_per_pos  (labeled by position)
+    """
+    try:
+        metrics = llm.get_metrics()
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"WARN: get_metrics() failed: {exc}", flush=True)
+        return None
+
+    num_drafts = 0
+    num_draft_tokens = 0
+    num_accepted = 0
+    accepted_per_pos: dict[int, int] = {}
+    found = False
+
+    for m in metrics:
+        name = getattr(m, "name", "")
+        if "spec_decode" not in name:
+            continue
+        found = True
+        value = getattr(m, "value", None)
+        if name == "vllm:spec_decode_num_drafts" and value is not None:
+            num_drafts += int(value)
+        elif name == "vllm:spec_decode_num_draft_tokens" and value is not None:
+            num_draft_tokens += int(value)
+        elif name == "vllm:spec_decode_num_accepted_tokens_per_pos":
+            # Vector metric: one value per draft position.
+            values = getattr(m, "values", None)
+            if values is not None:
+                for labels, v in values:
+                    pos = int(labels.get("position", -1)) if isinstance(labels, dict) else -1
+                    if pos >= 0:
+                        accepted_per_pos[pos] = accepted_per_pos.get(pos, 0) + int(v)
+        elif name == "vllm:spec_decode_num_accepted_tokens" and value is not None:
+            num_accepted += int(value)
+
+    if not found:
+        return None
+
+    acceptance_rate = (
+        (num_accepted / num_draft_tokens * 100.0) if num_draft_tokens else 0.0
+    )
+    # Acceptance length = mean accepted tokens per draft + 1 (the always-verified
+    # target token), matching the online "Acceptance length" definition.
+    acceptance_length = (num_accepted / num_drafts + 1.0) if num_drafts else 0.0
+    per_pos_rate = {}
+    if num_drafts:
+        for pos, cnt in sorted(accepted_per_pos.items()):
+            per_pos_rate[pos] = round(cnt / num_drafts * 100.0, 2)
+
+    return {
+        "acceptance_rate": round(acceptance_rate, 2),
+        "acceptance_length": round(acceptance_length, 2),
+        "num_drafts": num_drafts,
+        "num_draft_tokens": num_draft_tokens,
+        "num_accepted_tokens": num_accepted,
+        "per_position_acceptance": per_pos_rate,
+    }
 
 
 def run(cfg: dict[str, Any], reps: int, num_prompts: int | None) -> dict[str, Any]:
@@ -220,6 +311,21 @@ def run(cfg: dict[str, Any], reps: int, num_prompts: int | None) -> dict[str, An
         )
         rows.append(row)
 
+    # Collect speculative-decoding metrics before tearing down the engine.
+    spec_metrics = collect_spec_metrics(llm)
+    if spec_metrics:
+        print(
+            f"\nSpec decode: accept_rate={spec_metrics['acceptance_rate']}% "
+            f"accept_len={spec_metrics['acceptance_length']} "
+            f"drafts={spec_metrics['num_drafts']}",
+            flush=True,
+        )
+        pp = spec_metrics.get("per_position_acceptance", {})
+        if pp:
+            print("  per-position acceptance (%):", flush=True)
+            for pos, rate in pp.items():
+                print(f"    position {pos}: {rate}", flush=True)
+
     del llm
     gc.collect()
     try:
@@ -239,6 +345,7 @@ def run(cfg: dict[str, Any], reps: int, num_prompts: int | None) -> dict[str, An
         "mean_output_tps": round(statistics.mean(output_tps), 2),
         "stdev_output_tps": round(statistics.stdev(output_tps), 2) if len(output_tps) > 1 else 0.0,
         "mean_total_tps": round(statistics.mean(total_tps), 2),
+        "spec_metrics": spec_metrics,
         "rows": rows,
     }
     return result

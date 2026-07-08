@@ -56,10 +56,39 @@ PER_POS = re.compile(r"[Pp]osition\s*(\d+):\s*([\d.]+)")
 
 
 def parse_result_file(path: str) -> dict:
-    """Extract metrics from one bench result .txt file."""
+    """Extract metrics from one bench result file (online .txt or offline .json)."""
+    if path.endswith(".json"):
+        return parse_offline_json(path)
+    return parse_online_txt(path)
+
+
+def parse_offline_json(path: str) -> dict:
+    """Parse bench_offline_align.py output (JSON with mean_output_tps + spec_metrics)."""
+    import json
+    with open(path, encoding="utf-8", errors="replace") as f:
+        data = json.load(f)
+    out: dict = {"_path": path, "_name": os.path.basename(path), "_mode": "offline"}
+    out["output_throughput"] = data.get("mean_output_tps")
+    out["total_throughput"] = data.get("mean_total_tps")
+    rows = data.get("rows") or [{}]
+    out["req_throughput"] = rows[0].get("requests_per_second")
+    sm = data.get("spec_metrics") or {}
+    out["acceptance_rate"] = sm.get("acceptance_rate")
+    out["acceptance_length"] = sm.get("acceptance_length")
+    out["num_drafts"] = sm.get("num_drafts")
+    out["draft_tokens"] = sm.get("num_draft_tokens")
+    out["accepted_tokens"] = sm.get("num_accepted_tokens")
+    # per_position_acceptance is {pos: rate}; normalize keys to int.
+    pp = sm.get("per_position_acceptance") or {}
+    out["per_position"] = {int(k): float(v) for k, v in pp.items()}
+    return out
+
+
+def parse_online_txt(path: str) -> dict:
+    """Parse bench_online_align.sh output (vllm bench serve stdout text)."""
     with open(path, encoding="utf-8", errors="replace") as f:
         text = f.read()
-    out: dict = {"_path": path, "_name": os.path.basename(path)}
+    out: dict = {"_path": path, "_name": os.path.basename(path), "_mode": "online"}
     for key, pat in PATTERNS.items():
         m = pat.search(text)
         out[key] = float(m.group(1)) if m else None
@@ -95,6 +124,14 @@ def delta_pct(cand, base):
     return (cand - base) / base * 100.0
 
 
+def short_name(name: str) -> str:
+    """Derive a compact config label from a result filename."""
+    base = name.split("_online_")[0]
+    base = re.sub(r"_\d{8}_\d{6}\.json$", "", base)
+    base = re.sub(r"\.(json|txt)$", "", base)
+    return base
+
+
 def print_comparison(base: dict, cands: list[dict]) -> None:
     rows = [
         ("Output tok/s  (PRIMARY)", "output_throughput", 2),
@@ -106,7 +143,7 @@ def print_comparison(base: dict, cands: list[dict]) -> None:
     col = 18
     header = f"{'Metric':<26}{'BASELINE':<{col}}"
     for c in cands:
-        short = c["_name"].split("_online_")[0]
+        short = short_name(c["_name"])
         header += f"{short:<{col}}{'Δ%':<8}"
     print("=" * len(header))
     print(f"Baseline: {base['_name']}")
@@ -145,7 +182,7 @@ def print_comparison(base: dict, cands: list[dict]) -> None:
             if d is None:
                 continue
             verdict = "MET" if d >= 10 else ("PARTIAL" if d > 0 else "REGRESSION")
-            short = c["_name"].split("_online_")[0]
+            short = short_name(c["_name"])
             print(f"  {short:<28} {c.get('output_throughput'):.1f} tok/s "
                   f"({d:+.1f}%)  -> {verdict}")
 
@@ -161,10 +198,19 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.auto:
+        # Online results: online_results/<name>_online_<ts>.txt
+        # Offline results: offline_results/<name>_<ts>.json
         files = glob.glob(os.path.join(args.auto, "*_online_*.txt"))
+        files += glob.glob(os.path.join(args.auto, "*.json"))
         by_name: dict[str, list[str]] = {}
         for f in files:
-            name = os.path.basename(f).split("_online_")[0]
+            base = os.path.basename(f)
+            if "_online_" in base:
+                name = base.split("_online_")[0]
+            else:
+                # offline: strip trailing _<date>_<time>.json
+                name = re.sub(r"_\d{8}_\d{6}\.json$", "", base)
+                name = re.sub(r"\.json$", "", name)
             by_name.setdefault(name, []).append(f)
         picked = {n: newest(fs) for n, fs in by_name.items()}
         # baseline = the MTP config if present, else first
