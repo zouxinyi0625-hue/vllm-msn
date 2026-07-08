@@ -259,17 +259,28 @@ Key difference from the MTP configs: EAGLE-3 sets `spec_method: "eagle3"` and
 `--speculative-config '{"model": ..., "num_speculative_tokens": N, "method": "eagle3"}'`
 instead of `--spec-model` / `--spec-tokens` (which the MTP path still uses).
 
+**Step 0: download the EAGLE-3 draft locally** (avoids hitting the HF Hub at
+serve time). The config points `speculator_model` at
+`/tmp/models/gemma4/eagle3_speculator` by default:
+
+```bash
+bash download_eagle3_speculator.sh /tmp/models/gemma4/eagle3_speculator
+```
+
 Run it end-to-end (server + bench, unlimited concurrency, same as the MTP
 online run):
 
 ```bash
-# Optional overrides (recommended on the server, same as MTP runs):
-export GEMMA4_26B_TEXT_ONLY_MODEL_PATH=/path/to/gemma4/text_only
+# Point the target at the 26B model. GEMMA4_MODEL_PATH is the generic,
+# highest-priority override (use it to avoid a stale 12B _ModelDataPath_ or
+# GEMMA4_MODEL_PATH silently winning):
+export GEMMA4_MODEL_PATH=/tmp/models/gemma4/text_only
+# The EAGLE-3 draft is read from the config's speculator_model (local path).
+# Override it only if you downloaded it elsewhere:
+export GEMMA4_SPECULATOR_MODEL=/tmp/models/gemma4/eagle3_speculator
 # If the FP8 target + EAGLE-3 draft combo fails to load, fall back to the
 # official bf16 target the checkpoint was validated against:
 #   edit "model" in the config to google/gemma-4-26B-A4B-it and drop quantization
-# Or point the draft at a local copy:
-export GEMMA4_SPECULATOR_MODEL=/path/to/eagle3_speculator
 
 bash run_online_align.sh configs/26b_eagle3.json --max-concurrency none --num-prompts 1000
 ```

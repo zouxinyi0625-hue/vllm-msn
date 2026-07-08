@@ -3,7 +3,7 @@
   "description": "26B Gemma4 MoE EAGLE-3 config: FP8 text-only target (same as MTP baseline) + official RedHatAI EAGLE-3 draft. spec_method=eagle3 uses vLLM --speculative-config instead of --spec-model.",
   "model": "google/gemma-4-26B-A4B-it-text-only",
   "spec_method": "eagle3",
-  "speculator_model": "RedHatAI/gemma-4-26B-A4B-it-speculator.eagle3",
+  "speculator_model": "/tmp/models/gemma4/eagle3_speculator",
   "assistant_model": "",
   "served_model_name": "gemma4",
   "tokenizer": "google/gemma-4-26B-A4B-it",
