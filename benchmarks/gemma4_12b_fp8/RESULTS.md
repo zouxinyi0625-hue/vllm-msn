@@ -239,6 +239,40 @@ The 12B dense MTP run is much slower than 26B-A4B MTP on this A100 80GB setup:
 
 This is plausible because 26B-A4B is MoE with much lower active compute per token than a 12B dense model. The 12B MTP acceptance metrics are healthy and similar to 26B, so the throughput gap is likely dominated by target-model compute/backend path rather than poor speculative acceptance.
 
+## 12B Offline Result — MTP, A100 80GB
+
+The user provided the final `12b_e011_mtp` offline result from the JSON output:
+
+```text
+ts: 2026-07-07T09:24:35.703203+00:00
+reps: 1
+num_prompts: 1000
+engine_build_time: 282.9
+mean_output_tps: 972.89
+stdev_output_tps: 0
+mean_total_tps: 4391.49
+```
+
+Per-rep metrics:
+
+| Metric | Value |
+|---|---:|
+| Elapsed time (s) | 1274.876 |
+| Request throughput (req/s) | 0.7844 |
+| Prompt tokens total | 4,358,285 |
+| Output tokens total | 1,240,319 |
+| Total tokens | 5,598,604 |
+| Prompt tok/s | 3418.59 |
+| Output tok/s | **972.89** |
+| Total tok/s | **4391.49** |
+| Mean output length | 1240.32 |
+| Output length p50 | 1154 |
+| Output length p90 | 2166 |
+| Output length max | 8192 |
+| Finish stop | 999 |
+| Finish length | 1 |
+| Finish other | 0 |
+
 ## 12B Offline Result — no MTP, A100 80GB
 
 The user ran 12B no-MTP offline with the same dataset and E011-like settings, disabling speculative decoding:
@@ -275,10 +309,18 @@ elapsed=1554.2s req/s=0.643 output_tps=880.2 total_tps=3684.5 out_len_mean=1367.
 
 | Mode | Output tok/s | Total tok/s | Notes |
 |---|---:|---:|---|
-| 12B online MTP unlimited | 1133.69 | 4361.09 | OpenAI server path, unlimited queueing |
+| 12B offline MTP | **972.89** | **4391.49** | Offline `vllm.LLM`, speculative decoding enabled |
 | 12B offline no-MTP | 880.2 | 3684.5 | Offline `vllm.LLM`, no speculative decoding |
+| 12B online MTP unlimited | 1133.69 | 4361.09 | OpenAI server path, unlimited queueing |
 
-These are not perfectly apples-to-apples because one is online and one is offline, but they indicate MTP is directionally helpful for 12B as well. The next clean comparison is 12B offline MTP vs 12B offline no-MTP, or 12B online MTP vs 12B online no-MTP under the same concurrency.
+Offline apples-to-apples MTP uplift:
+
+| Metric | Uplift |
+|---|---:|
+| Output tok/s | **+10.5%** |
+| Total tok/s | **+19.2%** |
+
+MTP is beneficial for 12B on this workload, but the gain is much smaller than the 26B-A4B E011 stack-up and the absolute 12B dense throughput remains lower than 26B-A4B.
 
 ## Alignment vs Previous Results
 
