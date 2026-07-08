@@ -26,6 +26,22 @@ From `../gemma4_moe_fp8/RESULTS.md`:
 
 Use these as sanity checks before running 12B dense experiments.
 
+## MTP gain summary
+
+The same production-shaped dataset shows very different MTP gains for 26B-A4B MoE vs 12B dense.
+
+| Model / mode | no-MTP output tok/s | MTP output tok/s | MTP output uplift | no-MTP total tok/s | MTP total tok/s | MTP total uplift |
+|---|---:|---:|---:|---:|---:|---:|
+| 26B-A4B offline | 1474.46 | 2023.06 | **+37.2%** | 6430.13 | 8723.79 | **+35.7%** |
+| 12B dense offline | 880.20 | 972.89 | **+10.5%** | 3684.50 | 4391.49 | **+19.2%** |
+
+Key interpretation:
+
+- MTP helps both models, but it helps 26B-A4B much more.
+- 26B-A4B is MoE: total parameters are ~26B, but active compute per token is much closer to A4B-level.
+- 12B is dense: every token activates the full 12B model, so target verification remains compute-heavy even with MTP.
+- 12B MTP acceptance is healthy, so the smaller uplift is likely dominated by dense target compute/backend cost rather than poor draft quality.
+
 ## Directory layout
 
 ```text
