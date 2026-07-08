@@ -73,7 +73,22 @@ offline_results/26b_e011_no_mtp_20260707_062601.json
 | Config | Reps | Output tok/s | Total tok/s | Notes |
 |---|---:|---:|---:|---|
 | `26b_e011_mtp` | 1 | **2023.06** | 8723.79 | Matches previous E011 baseline (~2020) |
-| `26b_e011_no_mtp` | 1 | **1474.46** | 6430.13 | Matches previous E012/no-MTP baseline (~1465) |
+| `26b_e011_no_mtp` | 1 | **1474.46** | 6430.13 | Matches previous E012/no-MTP baseline (~1465). Run 2026-07-07. |
+| `26b_eagle3` | 1 | **888.44** | 3893.85 | 2026-07-08. Official RedHatAI EAGLE-3 draft + FP8 text-only target. **Slower than no-MTP** — draft appears to net-negative under FP8 target (low acceptance suspected; offline can't read accept metrics, `disable_log_stats=True`). Needs same-env no-MTP re-run to rule out environment drift. |
+
+### EAGLE-3 offline note (2026-07-08)
+
+The official EAGLE-3 speculator ran at **888 tok/s offline**, *below* the no-MTP
+baseline (1474 from 2026-07-07) and far below MTP (2023). Config diff confirms
+`26b_eagle3` is identical to `26b_e011_no_mtp` except the spec fields
+(`spec_method=eagle3`, `spec_tokens=5`, `speculator_model`), so the slowdown is
+the draft itself, not the scaffold. Likely causes: A100 has no native FP8
+(Marlin dequant path), 5 draft tokens + 3 aux-hidden layers per step, and a
+bf16-trained draft mismatched to the FP8 target → low acceptance → wasted draft
+compute (net-negative speculative decoding). Offline `LLM()` sets
+`disable_log_stats=True`, so acceptance rate/length must come from an **online**
+run. Before drawing conclusions, re-run `26b_e011_no_mtp` offline in the *same*
+environment/day to rule out environment drift vs the 07-07 baseline.
 
 ### Offline alignment conclusion
 
