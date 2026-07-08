@@ -186,21 +186,18 @@ def collect_spec_metrics(llm) -> dict[str, Any] | None:
         if "spec_decode" not in name:
             continue
         found = True
-        value = getattr(m, "value", None)
-        if name == "vllm:spec_decode_num_drafts" and value is not None:
-            num_drafts += int(value)
-        elif name == "vllm:spec_decode_num_draft_tokens" and value is not None:
-            num_draft_tokens += int(value)
+        if name == "vllm:spec_decode_num_drafts":
+            num_drafts += int(getattr(m, "value", 0) or 0)
+        elif name == "vllm:spec_decode_num_draft_tokens":
+            num_draft_tokens += int(getattr(m, "value", 0) or 0)
         elif name == "vllm:spec_decode_num_accepted_tokens_per_pos":
-            # Vector metric: one value per draft position.
+            # Vector metric: .values is a plain list[int], index == draft
+            # position, value == accepted-token count at that position.
             values = getattr(m, "values", None)
             if values is not None:
-                for labels, v in values:
-                    pos = int(labels.get("position", -1)) if isinstance(labels, dict) else -1
-                    if pos >= 0:
-                        accepted_per_pos[pos] = accepted_per_pos.get(pos, 0) + int(v)
-        elif name == "vllm:spec_decode_num_accepted_tokens" and value is not None:
-            num_accepted += int(value)
+                for pos, v in enumerate(values):
+                    accepted_per_pos[pos] = accepted_per_pos.get(pos, 0) + int(v)
+                    num_accepted += int(v)
 
     if not found:
         return None
