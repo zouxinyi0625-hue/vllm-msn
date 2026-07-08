@@ -154,7 +154,9 @@ per-position acceptance:`pos0 93.61 / pos1 87.08 / pos2 80.45 / pos3 74.23 / pos
 3. ✅ 镜像:用户容器内处理,我方只出脚本(已定)。
 4. ✅ MTP 走选项 B 独立 repo(已定)。
 5. ⬜ 优先级微调:P1 两条线(EAGLE-3 测速 + MTP 开发)先做哪个?还是同时?
-6. ⬜ 成功判据:仅 +10~20% tok/s,还是也看各 maiprofile 层 accept_len?
+6. ✅ 成功判据:**tok/s 和 accept_len 都要看**。tok/s 是最终目标;各 maiprofile 层的
+   accept_len(以及 per-position acceptance)必须单独记录,用于定位每条线在不同层上的表现。
+   所有测速/eval 脚本都要输出:总 tok/s + 逐层 accept_len + per-position acceptance。
 
 ---
 
