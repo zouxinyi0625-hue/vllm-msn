@@ -63,8 +63,11 @@ cleanup() {
 trap cleanup EXIT
 
 READY_URL="http://${HOST}:${PORT}/v1/models"
-echo "Waiting for server readiness: $READY_URL"
-for i in $(seq 1 180); do
+# EAGLE-3 / large FP8 models need to load two models plus compile CUDA graphs,
+# which can take several minutes. Default to 600s; override with READY_TIMEOUT.
+READY_TIMEOUT=${READY_TIMEOUT:-600}
+echo "Waiting for server readiness: $READY_URL (timeout ${READY_TIMEOUT}s)"
+for i in $(seq 1 "$READY_TIMEOUT"); do
   if curl -fsS "$READY_URL" >/dev/null 2>&1; then
     echo "Server ready after ${i}s"
     break
@@ -75,8 +78,8 @@ for i in $(seq 1 180); do
     exit 1
   fi
   sleep 1
-  if [[ "$i" == "180" ]]; then
-    echo "ERROR: server not ready after 180s. Last 120 log lines:" >&2
+  if [[ "$i" == "$READY_TIMEOUT" ]]; then
+    echo "ERROR: server not ready after ${READY_TIMEOUT}s. Last 120 log lines:" >&2
     tail -120 "$SERVER_LOG" >&2 || true
     exit 1
   fi

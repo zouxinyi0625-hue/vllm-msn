@@ -274,6 +274,16 @@ export GEMMA4_SPECULATOR_MODEL=/path/to/eagle3_speculator
 bash run_online_align.sh configs/26b_eagle3.json --max-concurrency none --num-prompts 1000
 ```
 
+> **⚠️ Target/draft must match sizes.** The `RedHatAI/...26B-A4B...eagle3`
+> draft only works with the **26B** target (`/tmp/models/gemma4/text_only`).
+> Pointing `GEMMA4_..._MODEL_PATH` at a 12B target while using the 26B draft
+> will fail (hidden size / vocab mismatch). For 12B you need a 12B eagle3 draft.
+
+> **⏱ Startup can take several minutes.** EAGLE-3 loads two models and compiles
+> CUDA graphs, so readiness easily exceeds the old 180s. The wait now defaults
+> to 600s; override with `READY_TIMEOUT=900 bash run_online_align.sh ...` if
+> needed.
+
 The `vllm bench serve` output already prints the metrics we care about:
 Output token throughput (tok/s), Acceptance rate (%), Acceptance length, and
 Per-position acceptance (%).
