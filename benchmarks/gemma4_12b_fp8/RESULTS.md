@@ -239,6 +239,47 @@ The 12B dense MTP run is much slower than 26B-A4B MTP on this A100 80GB setup:
 
 This is plausible because 26B-A4B is MoE with much lower active compute per token than a 12B dense model. The 12B MTP acceptance metrics are healthy and similar to 26B, so the throughput gap is likely dominated by target-model compute/backend path rather than poor speculative acceptance.
 
+## 12B Offline Result — no MTP, A100 80GB
+
+The user ran 12B no-MTP offline with the same dataset and E011-like settings, disabling speculative decoding:
+
+```bash
+env \
+  -u GEMMA4_26B_TEXT_ONLY_MODEL_PATH \
+  -u GEMMA4_26B_ASSISTANT_MODEL_PATH \
+  -u GEMMA4_ASSISTANT_MODEL_PATH \
+  -u _ModelDataPath_ \
+  GEMMA4_MODEL_PATH=/tmp/models/gemma4_12b/model \
+  bash run_offline_align.sh configs/12b_e011_no_mtp.json --reps 1 --prompts 1000
+```
+
+Run log summary:
+
+```text
+Processed prompts: 1000/1000 [25:46<00:00, 1.55s/it, est. speed input: 2818.97 toks/s, output: 884.82 toks/s]
+elapsed=1554.2s req/s=0.643 output_tps=880.2 total_tps=3684.5 out_len_mean=1367.97
+```
+
+| Metric | Value |
+|---|---:|
+| Successful requests | 1000 |
+| Elapsed time (s) | 1554.2 |
+| Request throughput (req/s) | 0.643 |
+| Estimated input tok/s from progress | 2818.97 |
+| Estimated output tok/s from progress | 884.82 |
+| Final output tok/s | **880.2** |
+| Final total tok/s | **3684.5** |
+| Mean output length | 1367.97 |
+
+### MTP vs no-MTP comparison for 12B
+
+| Mode | Output tok/s | Total tok/s | Notes |
+|---|---:|---:|---|
+| 12B online MTP unlimited | 1133.69 | 4361.09 | OpenAI server path, unlimited queueing |
+| 12B offline no-MTP | 880.2 | 3684.5 | Offline `vllm.LLM`, no speculative decoding |
+
+These are not perfectly apples-to-apples because one is online and one is offline, but they indicate MTP is directionally helpful for 12B as well. The next clean comparison is 12B offline MTP vs 12B offline no-MTP, or 12B online MTP vs 12B online no-MTP under the same concurrency.
+
 ## Alignment vs Previous Results
 
 Previous `gemma4_moe_fp8/RESULTS.md` headline numbers:
