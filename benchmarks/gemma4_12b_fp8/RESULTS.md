@@ -436,6 +436,41 @@ Per-position acceptance (%):
   dense-12B) must beat, per layer. Pair each layer with the no-MTP dense run
   (`configs/12b_e011_no_mtp.json`, same driver) for the per-layer speedup ratio.
 
+## 12B Per-Layer MAI Profile Result — no-MTP dense baseline + MTP speedup (2026-07-09)
+
+Same per-layer setup as above, config `12b_e011_no_mtp` (FP8 12B dense target,
+speculative decoding disabled). No acceptance metrics — dense has no draft — so
+this is the pure-target throughput baseline. Pairing it with the MTP run gives
+the **per-layer MTP speedup** (MTP tok/s ÷ dense tok/s).
+
+| Layer | dense tok/s | MTP tok/s | MTP speedup | MTP accept rate |
+|---|---:|---:|---:|---:|
+| layer3_seasonality | 1515.58 | 2687.77 | **1.77×** | 97.91% |
+| layer4_commercial_preference | 1094.08 | 1350.43 | 1.23× | 61.88% |
+| layer2_temporal | 757.79 | 893.21 | 1.18× | 50.78% |
+| layer1_actual | 920.06 | 965.93 | 1.05× | 67.30% |
+| layer1_intent | 1068.85 | 1100.44 | 1.03× | 49.27% |
+| **Aggregate (wall-clock)** | **1105.97** | **1382.32** | **1.25×** | 69.28% |
+
+Aggregate dense = 561,810 output tokens / 507.98 s across the five sequential
+per-layer runs.
+
+### Interpretation
+
+- **MTP speedup tracks acceptance, as expected.** `layer3_seasonality` (97.9%
+  accept) gets a **1.77× speedup**; the harder free-form layers get much less
+  (1.03–1.23×). Overall wall-clock speedup is **1.25×**.
+- **`layer1_actual` is the notable outlier**: 67.3% accept rate (2nd highest)
+  but only **1.05× speedup** — lower than `commercial` (61.9% accept → 1.23×) and
+  `temporal` (50.8% accept → 1.18×). Acceptance rate alone does not determine
+  end-to-end speedup: `layer1_actual` generates relatively few tokens per prompt
+  (~486 avg) so its runs are dominated by prefill/TTFT rather than decode, muting
+  the decode-side MTP win. Layers with longer generations (seasonality 206k
+  tokens, commercial 126k) convert acceptance into throughput more effectively.
+- Practical takeaway: **the Phase-1 trained drafts should target the low-speedup
+  free-form layers** (intent, temporal, actual) — seasonality is already near the
+  ceiling under MTP, so there is little headroom to beat there.
+
 ## Alignment vs Previous Results
 
 Previous `gemma4_moe_fp8/RESULTS.md` headline numbers:
