@@ -59,9 +59,19 @@ SUMMARY_JSON="${SUMMARY_JSON:-maiprofile_${_CFG_BASE}_online_summary.json}"
 READY_TIMEOUT="${READY_TIMEOUT:-600}"
 EVAL_DIR="${EVAL_DIR:-}"
 
-# Model overrides passed to serve_align.sh (set if not baked into config paths).
-export GEMMA4_MODEL_PATH="${GEMMA4_MODEL_PATH:-/tmp/models/gemma4_12b/model}"
-export GEMMA4_ASSISTANT_MODEL_PATH="${GEMMA4_ASSISTANT_MODEL_PATH:-/tmp/models/gemma4_12b/assistant}"
+# Model overrides passed to serve_align.sh. Only export when the user actually
+# sets them — otherwise the config's own model/assistant paths are used. This
+# matters for 26B configs (which carry HF repo names in the JSON): a blanket
+# 12B default here would silently override the 26B target.
+if [[ -n "${GEMMA4_MODEL_PATH:-}" ]]; then
+  export GEMMA4_MODEL_PATH
+fi
+if [[ -n "${GEMMA4_ASSISTANT_MODEL_PATH:-}" ]]; then
+  export GEMMA4_ASSISTANT_MODEL_PATH
+fi
+# TP size for the served model. 26B-A4B MoE needs tp>=2; 12B dense fits on tp=1.
+# Passed through to serve_align.sh.
+export TP_SIZE="${TP_SIZE:-1}"
 
 echo "============================================="
 echo " MAI Profile per-layer online benchmark — ${_CFG_BASE} (ONLINE)"
@@ -69,8 +79,9 @@ echo "============================================="
 echo "  config       : $CONFIG"
 echo "  layers       : $LAYERS"
 echo "  prompts/layer: $NUM_PROMPTS   max_concurrency: $MAX_CONCURRENCY"
-echo "  target       : $GEMMA4_MODEL_PATH"
-echo "  assistant    : $GEMMA4_ASSISTANT_MODEL_PATH"
+echo "  tp size      : $TP_SIZE"
+echo "  target       : ${GEMMA4_MODEL_PATH:-<from config>}"
+echo "  assistant    : ${GEMMA4_ASSISTANT_MODEL_PATH:-<from config>}"
 echo ""
 
 # ---- Step 1: convert eval datasets -> sc1 per-layer prompt files ----
