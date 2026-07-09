@@ -67,6 +67,12 @@ def override_model_paths(cfg: dict[str, Any]) -> None:
     if os.environ.get("GEMMA4_SPECULATOR_MODEL"):
         cfg["speculator_model"] = os.environ["GEMMA4_SPECULATOR_MODEL"]
 
+    # Dataset override (e.g. per-layer MAI Profile prompt files) without editing
+    # JSON. Also settable via --dataset-path (which takes precedence, applied in
+    # main()). Lets one config sweep many prompt files.
+    if os.environ.get("GEMMA4_DATASET_PATH"):
+        cfg["dataset_path"] = os.environ["GEMMA4_DATASET_PATH"]
+
 
 def load_prompts(dataset_path: Path, n: int) -> list[str]:
     prompts: list[str] = []
@@ -369,11 +375,20 @@ def main() -> int:
     parser.add_argument("--config", required=True, help="Path to config JSON")
     parser.add_argument("--reps", type=int, default=2)
     parser.add_argument("--prompts", type=int, default=None)
+    parser.add_argument(
+        "--dataset-path",
+        default=None,
+        help="Override the config's dataset_path (e.g. a per-layer MAI Profile "
+        "prompt file). Takes precedence over GEMMA4_DATASET_PATH and the JSON.",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     apply_env(cfg)
     override_model_paths(cfg)
+    # --dataset-path wins over env/JSON so a driver can sweep many layers.
+    if args.dataset_path:
+        cfg["dataset_path"] = args.dataset_path
     result = run(cfg, reps=args.reps, num_prompts=args.prompts)
     save_result(result)
     return 0

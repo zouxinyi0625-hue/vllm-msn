@@ -199,6 +199,7 @@ bash scripts/train_maiprofile/train_dspark_short_sync.sh
 | B4 | maiprofile 数据在 Azure ML mount | 本地无法访问数据/cache | 所有数据步骤只在服务器/容器跑,本地仅写代码 |
 | B5 | EAGLE-3 cache 复用需 layer-id assert 通过 | assert 失败则需重抽 cache | layer_ids 两边一致 = `[5,17,29,41,46]`,理论通过;本地无法预验,报错即贴 |
 | B6 | draft 质量高 ≠ 端到端快 | accept_len 好但 tok/s 可能不达标 | 坚持两个都测,tok/s 以 serve 实测为准,不用 accept rate 冒充加速比 |
+| **B7** | **vllm-msn 无 Gemma4 EAGLE-3 draft 模型类** | DeepSeek release draft(`deepseek-ai/eagle3_gemma4_12b_ttt7`,arch `Gemma4Eagle3Model`)无法在 vllm-msn serve:`registry.py` 只注册了 Gemma4 的 target(`Gemma4ForCausalLM`)+ MTP(`Gemma4MTPModel`),**无 eagle3**;`gemma4.py` 也无 `Gemma4Eagle3Model` 类。启动即 pydantic ValidationError | 选项:(a) 用 upstream/deepseek 官方支持该 arch 的 vLLM 版本测 draft 效果;(b) 照 `llama_eagle3.py::Eagle3LlamaForCausalLM`(~110 行)移植 Gemma4 draft 类 + 注册;(c) 先看 draft config.json 确认是否只是 arch 名没映射。**未决,待定方向** |
 
 ---
 

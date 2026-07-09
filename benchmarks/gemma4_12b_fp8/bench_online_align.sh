@@ -12,6 +12,8 @@ NUM_PROMPTS=""
 MAX_CONCURRENCY="32"
 REQUEST_RATE="inf"
 OUTPUT_DIR="online_results"
+DATASET_OVERRIDE=""
+RESULT_TAG=""
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -24,6 +26,8 @@ while [[ $# -gt 0 ]]; do
     --max-concurrency) MAX_CONCURRENCY="$2"; shift 2 ;;
     --request-rate) REQUEST_RATE="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --dataset-path) DATASET_OVERRIDE="$2"; shift 2 ;;
+    --result-tag) RESULT_TAG="$2"; shift 2 ;;
     -h|--help)
       sed -n '1,80p' "$SCRIPT_PATH"
       exit 0
@@ -55,6 +59,15 @@ DATASET_PATH=$(read_json dataset_path)
 DEFAULT_NUM_PROMPTS=$(read_json num_prompts)
 MAX_TOKENS=$(read_json max_tokens)
 
+# --dataset-path overrides the config's dataset_path (e.g. per-layer MAI
+# Profile prompt files). Env GEMMA4_DATASET_PATH is honored too; the CLI wins.
+if [[ -n "${GEMMA4_DATASET_PATH:-}" ]]; then
+  DATASET_PATH="$GEMMA4_DATASET_PATH"
+fi
+if [[ -n "$DATASET_OVERRIDE" ]]; then
+  DATASET_PATH="$DATASET_OVERRIDE"
+fi
+
 NUM_PROMPTS=${NUM_PROMPTS:-$DEFAULT_NUM_PROMPTS}
 if [[ -n "${GEMMA4_TOKENIZER:-}" ]]; then
   TOKENIZER="$GEMMA4_TOKENIZER"
@@ -79,7 +92,11 @@ case "${MAX_CONCURRENCY,,}" in
 esac
 
 mkdir -p "$OUTPUT_DIR"
-RESULT_FILE="${OUTPUT_DIR}/${NAME}_online_$(date +%Y%m%d_%H%M%S).txt"
+if [[ -n "$RESULT_TAG" ]]; then
+  RESULT_FILE="${OUTPUT_DIR}/${NAME}_${RESULT_TAG}_online_$(date +%Y%m%d_%H%M%S).txt"
+else
+  RESULT_FILE="${OUTPUT_DIR}/${NAME}_online_$(date +%Y%m%d_%H%M%S).txt"
+fi
 
 if [[ -z "$BASE_URL" ]]; then
   BASE_URL="http://${HOST}:${PORT}"
