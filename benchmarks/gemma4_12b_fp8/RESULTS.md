@@ -386,6 +386,56 @@ Offline apples-to-apples MTP uplift:
 
 MTP is beneficial for 12B on this workload, but the gain is much smaller than the 26B-A4B E011 stack-up and the absolute 12B dense throughput remains lower than 26B-A4B.
 
+## 12B Per-Layer MAI Profile Result — MTP, A100 80GB, Unlimited Concurrency (2026-07-09)
+
+Google MTP assistant (`12b_e011_mtp`, FP8 12B dense target + assistant, `spec_tokens=5`)
+benchmarked **per MAI Profile eval layer** to see how acceptance varies by task
+type. Each layer = 200 eval prompts (the DSpark eval split), converted from the
+`maiprofile_<layer>.jsonl` eval datasets to the sc1 `{"prompt": ...}` format via
+`convert_maiprofile_eval_to_sc1.py`, then run with `run_maiprofile_online.sh`
+(one server load, all five layers benchmarked against it). Unlimited concurrency,
+`temperature=0.7`, `output-len` cap 8192. Metrics parsed from `vllm bench serve`.
+
+| Layer | Accept rate (%) | Accept length | Output tok/s | Prompts |
+|---|---:|---:|---:|---:|
+| **layer3_seasonality** | **97.91** | **5.90** | **2687.77** | 200 |
+| layer1_actual | 67.30 | 4.37 | 965.93 | 200 |
+| layer4_commercial_preference | 61.88 | 4.09 | 1350.43 | 200 |
+| layer2_temporal | 50.78 | 3.54 | 893.21 | 200 |
+| layer1_intent | 49.27 | 3.46 | 1100.44 | 200 |
+| **Aggregate (all 5, wall-clock)** | **69.28** | **4.46** | **1382.32** | 1000 |
+
+Aggregate = 563,530 output tokens / 407.67 s summed across the five sequential
+per-layer runs; aggregate accept rate/length are token-weighted across all
+layers (437,565 accepted / 631,625 draft tokens; 126,325 drafts).
+
+Per-position acceptance (%):
+
+| Layer | pos0 | pos1 | pos2 | pos3 | pos4 |
+|---|---:|---:|---:|---:|---:|
+| layer3_seasonality | 99.68 | 99.07 | 98.17 | 97.20 | 95.45 |
+| layer1_actual | 84.63 | 73.51 | 65.71 | 59.19 | 53.47 |
+| layer4_commercial_preference | 83.97 | 70.03 | 59.94 | 50.86 | 44.62 |
+| layer2_temporal | 77.24 | 59.16 | 47.52 | 38.52 | 31.49 |
+| layer1_intent | 73.97 | 56.42 | 45.49 | 38.22 | 32.27 |
+
+### Interpretation
+
+- **Acceptance is strongly layer-dependent** (49–98%). `layer3_seasonality` is
+  near-saturated (97.9% / accept_len 5.90 / 2688 tok/s) — its outputs are short
+  and highly patterned, so the MTP draft nails them. This matches the DSpark
+  finding that seasonality is the easiest layer (DSpark accept_len 5.88 there).
+- The free-form layers (`intent`, `temporal`, `actual`, `commercial`) sit at
+  49–67% / accept_len 3.5–4.4 — open-ended generation is harder to draft, same
+  ordering DSpark saw.
+- **tok/s does not track accept rate directly** (e.g. `layer1_intent` has the
+  lowest accept rate but not the lowest tok/s) because output length per prompt
+  differs a lot by layer (seasonality generates 206k tokens from 200 prompts vs
+  intent's 60k). Throughput is jointly set by acceptance *and* output length.
+- This is the **MTP baseline** the trained drafts (Phase 1 EAGLE-3/DSpark on
+  dense-12B) must beat, per layer. Pair each layer with the no-MTP dense run
+  (`configs/12b_e011_no_mtp.json`, same driver) for the per-layer speedup ratio.
+
 ## Alignment vs Previous Results
 
 Previous `gemma4_moe_fp8/RESULTS.md` headline numbers:
