@@ -1,43 +1,49 @@
 #!/usr/bin/env bash
-# Per-layer ONLINE acceptance-rate for the Google MTP model (Gemma4-12B), in one
-# command. Starts the vLLM server ONCE, then benchmarks each MAI Profile layer
-# against the same live server (model loads once, 5 layers reuse it), then
-# parses each run's stdout for the acceptance metrics and prints a summary table.
+# Per-layer ONLINE benchmark of ANY Gemma4-12B config on the MAI Profile eval
+# layers, in one command. Works for both the MTP draft config and the no-MTP
+# dense baseline (and any other config) — pick via CONFIG=.
 #
 # WHY ONLINE (not offline): the acceptance rate / length / per-position numbers
 # are only emitted by `vllm bench serve` (online). The offline path runs with
 # stats disabled and cannot report them. So per-layer accept rate = online only.
+# (A dense/no-MTP config simply has no Speculative Decoding block; the summary
+#  shows accept rate = n/a for it, which is expected — you compare tok/s.)
 #
 # WHAT YOU GET
-#   - Per layer: acceptance rate, acceptance length, per-position acceptance,
-#     output tok/s (all parsed from vllm bench serve stdout).
-#   - One combined-run throughput point if you also pass the _all file (optional).
-#   - A summary table + maiprofile_mtp_online_summary.json.
+#   - Per layer: acceptance rate, acceptance length, per-position acceptance
+#     (blank for dense/no-MTP), output tok/s (all parsed from bench stdout).
+#   - A summary table + a JSON file (SUMMARY_JSON, default depends on config).
 #
 # PIPELINE
 #   1. convert_maiprofile_eval_to_sc1.py: DSpark eval -> sc1 {"prompt":...} files.
-#   2. serve_align.sh: start the 12B MTP server once (target + assistant).
+#   2. serve_align.sh: start the vLLM server once for the chosen CONFIG.
 #   3. bench_online_align.sh --dataset-path <layer> --result-tag <layer>: per layer.
 #   4. parse each online_results/*_<layer>_*.txt for the metrics; summarize.
 #
 # RUN ON THE SERVER (GPU + Azure ML mount), inside the vLLM venv.
 #
 # USAGE
-#   # defaults: 5 short layers from $AZURE_ML_INPUT_msndni, 200 prompts, MTP config.
-#   bash run_maiprofile_mtp_online.sh
+#   # Google MTP draft (default config):
+#   bash run_maiprofile_online.sh
+#
+#   # no-MTP dense baseline (use a distinct SUMMARY_JSON so it doesn't clobber
+#   # the MTP summary; accept rate will be n/a, compare the tok/s):
+#   CONFIG=configs/12b_e011_no_mtp.json \
+#     SUMMARY_JSON=maiprofile_dense_online_summary.json \
+#     bash run_maiprofile_online.sh
 #
 #   # explicit eval-datasets dir; subset of layers; more prompts:
 #   EVAL_DIR=/path/to/eval_datasets LAYERS="layer1_actual,layer3_seasonality" \
-#     NUM_PROMPTS=200 bash run_maiprofile_mtp_online.sh
+#     NUM_PROMPTS=200 bash run_maiprofile_online.sh
 #
 #   # unlimited concurrency (max throughput, matches the RESULTS.md baseline runs):
-#   MAX_CONCURRENCY=none bash run_maiprofile_mtp_online.sh
+#   MAX_CONCURRENCY=none bash run_maiprofile_online.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ---- Config (override via env) ----
-CONFIG="${CONFIG:-configs/12b_e011_mtp.json}"      # Google MTP (target + assistant)
+CONFIG="${CONFIG:-configs/12b_e011_mtp.json}"      # default: Google MTP (target + assistant)
 LAYERS="${LAYERS:-short}"
 NUM_PROMPTS="${NUM_PROMPTS:-200}"
 MAX_CONCURRENCY="${MAX_CONCURRENCY:-none}"          # 'none' = unlimited (baseline style)
@@ -46,7 +52,10 @@ HOST="${HOST:-localhost}"
 PROMPTS_DIR="${PROMPTS_DIR:-maiprofile_bench_prompts}"
 OUTPUT_DIR="${OUTPUT_DIR:-online_results}"
 SERVER_LOG_DIR="${SERVER_LOG_DIR:-server_logs}"
-SUMMARY_JSON="${SUMMARY_JSON:-maiprofile_mtp_online_summary.json}"
+# Default summary name derives from the config, so MTP vs dense don't clobber
+# each other even if you forget to set SUMMARY_JSON.
+_CFG_BASE="$(basename "$CONFIG" .json)"
+SUMMARY_JSON="${SUMMARY_JSON:-maiprofile_${_CFG_BASE}_online_summary.json}"
 READY_TIMEOUT="${READY_TIMEOUT:-600}"
 EVAL_DIR="${EVAL_DIR:-}"
 
@@ -55,7 +64,7 @@ export GEMMA4_MODEL_PATH="${GEMMA4_MODEL_PATH:-/tmp/models/gemma4_12b/model}"
 export GEMMA4_ASSISTANT_MODEL_PATH="${GEMMA4_ASSISTANT_MODEL_PATH:-/tmp/models/gemma4_12b/assistant}"
 
 echo "============================================="
-echo " MAI Profile per-layer accept rate — Google MTP (ONLINE)"
+echo " MAI Profile per-layer online benchmark — ${_CFG_BASE} (ONLINE)"
 echo "============================================="
 echo "  config       : $CONFIG"
 echo "  layers       : $LAYERS"
@@ -80,7 +89,7 @@ if [[ ${#LAYER_FILES[@]} -eq 0 ]]; then
 fi
 
 # ---- Step 2: start the vLLM server ONCE ----
-echo "===== Step 2/4: start vLLM server (loads 12B + MTP assistant once) ====="
+echo "===== Step 2/4: start vLLM server (loads the config's model(s) once) ====="
 mkdir -p "$SERVER_LOG_DIR" "$OUTPUT_DIR"
 SERVER_LOG="${SERVER_LOG_DIR}/$(basename "$CONFIG" .json)_maiprofile_server_$(date +%Y%m%d_%H%M%S).log"
 bash serve_align.sh "$CONFIG" "$PORT" >"$SERVER_LOG" 2>&1 &
