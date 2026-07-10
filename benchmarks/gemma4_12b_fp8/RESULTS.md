@@ -555,9 +555,10 @@ Aggregate dense = 523,505 output tokens / 296.41 s across the five per-layer run
 - **MTP speedup on 26B-A4B is 1.52× aggregate** (vs 1.25× on 12B) — MTP helps the
   MoE more than the dense 12B. `layer3_seasonality` reaches **2.25×** (99% accept),
   free-form layers 1.27–1.39×.
-- **26B dense is already much faster than 12B dense** (aggregate 1766 vs 1106
-  tok/s) because the MoE activates only ~4B params/token; MTP then stacks another
-  1.52× on top, so 26B MTP (2679 tok/s) is **~1.9× the 12B MTP** throughput.
+- **26B-A4B no-MTP is already much faster than 12B dense** (aggregate 1766 vs 1106
+  tok/s) because the 26B-A4B MoE activates only ~4B params/token (vs the full 12B
+  dense); MTP then stacks another 1.52× on top, so 26B MTP (2679 tok/s) is
+  **~1.9× the 12B MTP** throughput.
 - **`layer1_actual` is again the low-speedup outlier** (1.27× despite 75% accept)
   — same short-generation/TTFT-bound effect seen on 12B: its runs don't spend
   enough time in decode for the acceptance win to dominate.
