@@ -532,6 +532,39 @@ Per-position acceptance (%):
   with the 26B no-MTP dense run (`configs/26b_e011_no_mtp.json`, same driver) for
   the per-layer speedup ratio.
 
+## 26B-A4B Per-Layer MAI Profile Result — no-MTP dense baseline + MTP speedup (2026-07-10)
+
+Same per-layer setup, config `26b_e011_no_mtp` (FP8 26B-A4B text-only target,
+speculative decoding disabled, TP=1). No acceptance metrics — dense has no draft.
+Pairing with the 26B MTP run gives the **per-layer MTP speedup** on the final
+target model.
+
+| Layer | dense tok/s | MTP tok/s | MTP speedup | MTP accept rate |
+|---|---:|---:|---:|---:|
+| layer3_seasonality | 2227.81 | 5003.34 | **2.25×** | 99.03% |
+| layer4_commercial_preference | 1782.48 | 2483.02 | 1.39× | 69.10% |
+| layer1_intent | 1711.87 | 2341.30 | 1.37× | 59.34% |
+| layer2_temporal | 1492.74 | 1955.60 | 1.31× | 54.50% |
+| layer1_actual | 1346.87 | 1704.66 | 1.27× | 75.45% |
+| **Aggregate (wall-clock)** | **1766.15** | **2678.67** | **1.52×** | 75.87% |
+
+Aggregate dense = 523,505 output tokens / 296.41 s across the five per-layer runs.
+
+### Interpretation
+
+- **MTP speedup on 26B-A4B is 1.52× aggregate** (vs 1.25× on 12B) — MTP helps the
+  MoE more than the dense 12B. `layer3_seasonality` reaches **2.25×** (99% accept),
+  free-form layers 1.27–1.39×.
+- **26B dense is already much faster than 12B dense** (aggregate 1766 vs 1106
+  tok/s) because the MoE activates only ~4B params/token; MTP then stacks another
+  1.52× on top, so 26B MTP (2679 tok/s) is **~1.9× the 12B MTP** throughput.
+- **`layer1_actual` is again the low-speedup outlier** (1.27× despite 75% accept)
+  — same short-generation/TTFT-bound effect seen on 12B: its runs don't spend
+  enough time in decode for the acceptance win to dominate.
+- Practical takeaway unchanged: **trained drafts should target the free-form
+  layers** (actual, temporal, intent, commercial) where MTP speedup is 1.27–1.39×;
+  seasonality is already near the ceiling at 2.25×.
+
 ## Alignment vs Previous Results
 
 Previous `gemma4_moe_fp8/RESULTS.md` headline numbers:
