@@ -10,28 +10,41 @@
 
 ---
 
-## ★ 一、项目总览:要做什么 / 现状 / 结论
+## ★ 一、仓库地图（可跳转）
 
-**方法路线**:三种自训 draft 方案(DSpark / MTP finetune / EAGLE-3)并行探索,谁先在 MoE 上超过 MTP 基线谁赢。
-EAGLE-3 按训练框架分两支(speculators / DSpark)。
+| Repo | 分支 | 职责 | 状态 |
+|---|---|---|---|
+| [`vllm-msn`](https://github.com/zouxinyi0625-hue/vllm-msn/tree/feat/gemma4-12b-fp8-bench/benchmarks/gemma4_12b_fp8) | `feat/gemma4-12b-fp8-bench` | 推理 / benchmark / **本文档 + RESULTS.md** | 🟢 |
+| [`DeepSpec`](https://github.com/zouxinyi0625-hue/DeepSpec/tree/dev/maiprofile) | `dev/maiprofile` | DSpark + EAGLE-3 训练（线 1 / 3b） | 🟢 |
+| [`speculators-fork`](https://github.com/zouxinyi0625-hue/speculators/tree/dev/maiprofile) | `dev/maiprofile` | EAGLE-3 @ speculators（线 3a） | 🟢 复活 |
+| [`gemma4-mtp-trainer`](https://github.com/zouxinyi0625-hue/gemma4-mtp-trainer) | `main` | MTP finetune 自研（线 2） | 🟡 未实训 |
 
-| # | 工作线 | 目标模型 | 训练状态 | Serve 状态 | 结论 / 下一步 |
-|---|---|---|---|---|---|
-| **1** | **DSpark**(主力) | 12B→MoE | 🟢 12B dense **训练有明显增益** | 🔴 vLLM 不支持(卡 PR #47216) | 方法已验证有效;缺 MoE 训练支持 + serve。**押注方向** |
-| **2** | **MTP finetune** | 26B MoE | 🟡 自研脚本就绪,**未实训** | 🟢 原生(=线上基线) | 无社区 finetune 先例,探索性;脚本缺 TTT 需补 |
-| **3a** | **EAGLE-3 @ speculators** | 26B MoE | 🟢 **hidden_states 今日修好,周一(07-13)训完** | 🟡 待测 | prefix-caching bug 已解,复活推进中 |
-| **3b** | **EAGLE-3 @ DSpark** | 12B | 🟡 训起来了,loss 降但 **eval 差** | 🔴 vLLM load 不了(待测新版) | 排查 eval 差原因;测新版 vLLM |
-| **—** | 基线测量 | 12B + 26B | ✅ **全部完成**(§二) | — | MTP + no-MTP 逐层基线已录,作为超越靶子 |
-| **—** | 官方 off-the-shelf draft | 26B MoE | ✅ 已测 → **负优化** | — | 证明必须自训(见 §二) |
-
-**三条核心结论**:
-1. **自训是必须的** —— 官方 EAGLE-3 draft 在 26B MoE + MAI 分布上 net-negative(931 tok/s / accept 9.75%,比不开 spec 还慢)。
-2. **DSpark 方法 work** —— 12B dense 上训练后 accept rate 较未训练明显提升。这是目前最强正向信号。
-3. **MoE 是分水岭** —— DSpark/DeepSpec-EAGLE3 写死 dense(`assert not enable_moe_block`);只有 **MTP** 和 **speculators-EAGLE3** 能直接在 MoE 上训 → 最终目标要靠这两条,或给 DSpark 加 MoE 支持。
+commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Hermes Agent)` + `Signed-off-by:`。
 
 ---
 
-## ★ 二、基线:自训 draft 要超越的靶子(全部实测,2026-07-10)
+## ★ 二、项目主表：要做什么 / 现状 / 结论
+
+> 三种自训 draft 方案并行。EAGLE-3 按训练框架分两支（DSpark / speculators）。
+> **吞吐口径**：online `vllm bench serve`,MAI Profile 5 层聚合,`spec_tokens=5`,unlimited 并发,tok/s。
+
+| 工作线 | 模型 | 原生训练支持 | 预训练模型 & 其 MAI 吞吐 | 训练完成 | 训练后模型吞吐 / 卡点 |
+|---|---|---|---|---|---|
+| **DSpark** | 12B dense | ✅（DeepSpec） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（vLLM 不能 serve，只有 accept_len） | ✅ block5/block7 | 🔴 **blocked**：vLLM 不支持 serve（PR #47216）→ 只有 accept_len（block5 均值 4.18） |
+| **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§四路径a） |
+| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | 有（Google assistant） · **1382 tok/s** ✅ | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
+| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | 有（Google assistant） · **2678 tok/s** ✅ | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
+| **EAGLE-3** | 12B dense（@DSpark） | ✅（DeepSpec） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（vLLM load 不了） | 🟡 2000 step loss 降 | 🔴 **eval 精度差待排查** + vLLM 无法 load（arch 未注册,B7） |
+| **EAGLE-3** | 26B-A4B MoE（@speculators） | ✅（speculators） | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化）** | 🟡 **进行中,周一(07-13)训完** | ⏳ hidden_states 07-10 修好,待训完 eval |
+
+**三条核心结论**：
+1. **自训是必须的** —— 官方 EAGLE-3 draft 在 26B MoE 上 net-negative（931 tok/s / accept 9.75%,比不开 spec 还慢）。
+2. **DSpark 方法 work** —— 12B dense 训练后 accept rate 较未训练明显提升。目前最强正向信号。
+3. **MoE 是分水岭** —— DSpark/DeepSpec-EAGLE3 写死 dense；只有 **MTP** 和 **speculators-EAGLE3** 能直接在 MoE 上训 → 最终目标靠这两条,或给 DSpark 加 MoE 支持。
+
+---
+
+## ★ 三、基线:自训 draft 要超越的靶子(全部实测,2026-07-10)
 
 MAI Profile 5 短层(各 200 prompt),online `vllm bench serve`,`spec_tokens=5`,unlimited 并发。
 
@@ -64,7 +77,7 @@ accept **9.75%**、accept_len **1.49**、pos0 31%。**通用 off-the-shelf draft
 
 ---
 
-## ★ 三、当前重点 & 待办(按优先级)
+## ★ 四、当前重点 & 待办(按优先级)
 
 | 优先级 | 事项 | 线 | 依赖 |
 |---|---|---|---|
@@ -81,7 +94,7 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
 
 ---
 
-## 四、各线技术细节
+## 五、各线技术细节
 
 ### 线 1 — DSpark(主力,repo `DeepSpec@dev/maiprofile`)
 - **实测**:12B dense block5 逐层 accept_len:seasonality 5.88 / commercial 3.97 / temporal 3.96 / actual 3.65 / intent 3.46。block7 更高(seasonality 7.76)但 verify_rate 降 ~0.1 → 块大小是端到端权衡。
@@ -122,7 +135,7 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
 
 ---
 
-## 五、Block / 风险
+## 六、Block / 风险
 
 | # | 风险 | 影响 | 状态 |
 |---|---|---|---|
@@ -131,19 +144,6 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
 | B4 | 数据/cache 在 Azure ML mount | 本地无法访问 | 数据步骤只在服务器跑 |
 | B6 | draft 质量高 ≠ 端到端快 | accept_len 好但 tok/s 未必达标 | 两个都测,tok/s 以 serve 为准 |
 | B7 | vllm-msn 无 Gemma4 EAGLE-3 draft 类 | DSpark-EAGLE3 模型 load 不了 | 待测新版 vLLM;或移植 `Gemma4Eagle3Model`(照 `llama_eagle3.py` ~110 行) |
-
----
-
-## 六、仓库地图
-
-| Repo | 分支 | 职责 | 状态 |
-|---|---|---|---|
-| `vllm-msn` | `feat/gemma4-12b-fp8-bench` | 推理 / benchmark / **本文档 + RESULTS.md** | 🟢 |
-| `DeepSpec` | `dev/maiprofile` | DSpark + EAGLE-3 训练(线 1 / 3b) | 🟢 |
-| `speculators-fork` | `dev/maiprofile` | EAGLE-3 @ speculators(线 3a) | 🟢 复活 |
-| `gemma4-mtp-trainer` | `main` | MTP finetune 自研(线 2) | 🟡 未实训 |
-
-commit 署名:`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Hermes Agent)` + `Signed-off-by:`。
 
 ---
 
