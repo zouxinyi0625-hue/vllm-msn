@@ -471,6 +471,67 @@ per-layer runs.
   free-form layers** (intent, temporal, actual) — seasonality is already near the
   ceiling under MTP, so there is little headroom to beat there.
 
+## 26B-A4B Per-Layer MAI Profile Result — MTP, A100 80GB, Unlimited Concurrency (2026-07-10)
+
+The final-target model. Google MTP assistant on **26B-A4B MoE** (config
+`26b_e011_mtp`, FP8 text-only target + assistant, `spec_tokens=5`, TP=1),
+benchmarked per MAI Profile eval layer with the same driver as 12B
+(`run_26b_maiprofile_online.sh` → `run_maiprofile_online.sh`), 200 prompts/layer,
+unlimited concurrency, `temperature=0.7`. Metrics parsed from `vllm bench serve`.
+
+> Model wiring verified correct this run: target `/tmp/models/gemma4/text_only`,
+> assistant `/tmp/models/gemma4/assistant`, no speculator. (An earlier attempt
+> silently loaded the 12B target + 26B assistant via stale env, causing a CUDA
+> gather index-out-of-bounds; fixed by using the generic `GEMMA4_MODEL_PATH`.)
+
+| Layer | Accept rate (%) | Accept length | Output tok/s | Prompts |
+|---|---:|---:|---:|---:|
+| **layer3_seasonality** | **99.03** | **5.95** | **5003.34** | 200 |
+| layer1_actual | 75.45 | 4.77 | 1704.66 | 200 |
+| layer4_commercial_preference | 69.10 | 4.46 | 2483.02 | 200 |
+| layer1_intent | 59.34 | 3.97 | 2341.30 | 200 |
+| layer2_temporal | 54.50 | 3.72 | 1955.60 | 200 |
+| **Aggregate (all 5, wall-clock)** | **75.87** | **4.79** | **2678.67** | 1000 |
+
+Aggregate = 523,761 output tokens / 195.53 s; token-weighted across layers
+(415,123 accepted / 547,120 draft tokens; 109,424 drafts).
+
+Per-position acceptance (%):
+
+| Layer | pos0 | pos1 | pos2 | pos3 | pos4 |
+|---|---:|---:|---:|---:|---:|
+| layer3_seasonality | 99.84 | 99.64 | 99.23 | 98.77 | 97.67 |
+| layer1_actual | 89.09 | 80.75 | 74.52 | 68.97 | 63.90 |
+| layer4_commercial_preference | 85.89 | 75.76 | 67.82 | 61.12 | 54.92 |
+| layer2_temporal | 78.34 | 62.26 | 51.74 | 43.42 | 36.73 |
+| layer1_intent | 80.75 | 66.24 | 56.81 | 49.78 | 43.14 |
+
+### 26B-A4B vs 12B MTP (same layers, same spec_tokens=5)
+
+| Layer | 12B accept_len | 26B accept_len | 12B tok/s | 26B tok/s | tok/s ratio |
+|---|---:|---:|---:|---:|---:|
+| layer3_seasonality | 5.90 | 5.95 | 2687.8 | 5003.3 | 1.86× |
+| layer1_actual | 4.37 | 4.77 | 965.9 | 1704.7 | 1.76× |
+| layer4_commercial_preference | 4.09 | 4.46 | 1350.4 | 2483.0 | 1.84× |
+| layer2_temporal | 3.54 | 3.72 | 893.2 | 1955.6 | 2.19× |
+| layer1_intent | 3.46 | 3.97 | 1100.4 | 2341.3 | 2.13× |
+| **Aggregate** | **4.46** | **4.79** | **1382.3** | **2678.7** | **1.94×** |
+
+### Interpretation
+
+- **26B-A4B MTP beats 12B MTP on every layer** — higher acceptance length on all
+  5 layers and ~1.8–2.2× the throughput. Aggregate accept_len 4.79 vs 12B 4.46,
+  aggregate tok/s 2679 vs 1382 (**1.94×**). The MoE's larger effective capacity
+  makes the MTP draft both more accurate and faster in absolute terms.
+- **Same layer ordering as 12B**: seasonality saturates (99% accept / 5.95
+  accept_len / 5003 tok/s), free-form layers trail (intent/temporal lowest).
+- This aggregate (accept rate 75.87%, accept_len 4.79) is close to the earlier
+  26B sc1_delta MTP baseline (80.58% / 5.03) — the MAI Profile layer mix is a bit
+  harder than sc1_delta, driven by the low-acceptance free-form layers.
+- **This is the per-layer 26B MTP baseline the trained drafts must beat.** Pair
+  with the 26B no-MTP dense run (`configs/26b_e011_no_mtp.json`, same driver) for
+  the per-layer speedup ratio.
+
 ## Alignment vs Previous Results
 
 Previous `gemma4_moe_fp8/RESULTS.md` headline numbers:
