@@ -27,15 +27,21 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 
 > 三种自训 draft 方案并行。EAGLE-3 按训练框架分两支（DSpark / speculators）。
 > **吞吐口径**：online `vllm bench serve`,MAI Profile 5 层聚合,`spec_tokens=5`,unlimited 并发,tok/s。
+> **无 draft 参照(no-MTP baseline)**:12B dense **1106 tok/s** · 26B-A4B MoE **1766 tok/s**(自训 draft 至少要超过它才有意义)。
 
-| 工作线 | 模型 | 原生训练支持 | 预训练模型 & 其 MAI 吞吐 | 训练完成 | 训练后模型吞吐 / 卡点 |
+| 工作线 | 模型 | 原生训练支持 | 预训练模型 & 其 MAI 吞吐（vs no-MTP baseline） | 训练完成 | 训练后模型吞吐 / 卡点 |
 |---|---|---|---|---|---|
+| **—基线—** | 12B dense | — | no-MTP(无 draft) **1106** · Google MTP **1382** | — | 参照线 |
+| **—基线—** | 26B-A4B MoE | — | no-MTP(无 draft) **1766** · Google MTP **2678** | — | 参照线（最终靶子） |
 | **DSpark** | 12B dense | ✅（DeepSpec） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（vLLM 不能 serve，只有 accept_len） | ✅ block5/block7 | 🔴 **blocked**：vLLM 不支持 serve（PR #47216）→ 只有 accept_len（block5 均值 4.18） |
-| **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§四路径a） |
-| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | 有（Google assistant） · **1382 tok/s** ✅ | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
-| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | 有（Google assistant） · **2678 tok/s** ✅ | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
-| **EAGLE-3** | 12B dense（@DSpark） | ✅（DeepSpec） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（vLLM load 不了） | 🟡 2000 step loss 降 | 🔴 **eval 精度差待排查** + vLLM 无法 load（arch 未注册,B7） |
-| **EAGLE-3** | 26B-A4B MoE（@speculators） | ✅（speculators） | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化）** | 🟡 **进行中,周一(07-13)训完** | ⏳ hidden_states 07-10 修好,待训完 eval |
+| **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
+| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
+| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
+| **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（vLLM load 不了） | 🟡 2000 step loss 降 | 🔴 **eval 精度差待排查** + vLLM 无法 load（arch 未注册,B7） |
+| **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
+| **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | 🟡 **进行中,周一(07-13)训完** | ⏳ hidden_states 07-10 修好,待训完 eval |
+
+> **注**：EAGLE-3 @speculators **原生支持 26B MoE,故不测 12B**（直接攻最终目标）;12B 那格由 EAGLE-3 @DSpark 覆盖。
 
 **三条核心结论**：
 1. **自训是必须的** —— 官方 EAGLE-3 draft 在 26B MoE 上 net-negative（931 tok/s / accept 9.75%,比不开 spec 还慢）。
