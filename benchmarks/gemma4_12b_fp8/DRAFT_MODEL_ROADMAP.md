@@ -29,17 +29,17 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 > **吞吐口径**：online `vllm bench serve`,MAI Profile 5 层聚合,`spec_tokens=5`,unlimited 并发,tok/s。
 > **无 draft 参照(no-MTP baseline)**:12B dense **1106 tok/s** · 26B-A4B MoE **1766 tok/s**(自训 draft 至少要超过它才有意义)。
 
-| 工作线 | 模型 | 原生训练支持 | 预训练模型 & 其 MAI 吞吐（vs no-MTP baseline） | 训练完成 | 训练后模型吞吐 / 卡点 |
-|---|---|---|---|---|---|
-| **—基线—** | 12B dense | — | no-MTP(无 draft) **1106** · Google MTP **1382** | — | 参照线 |
-| **—基线—** | 26B-A4B MoE | — | no-MTP(无 draft) **1766** · Google MTP **2678** | — | 参照线（最终靶子） |
-| **DSpark** | 12B dense | ✅（DeepSpec） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（vLLM 不能 serve，只有 accept_len） | ✅ block5/block7 | 🔴 **blocked**：vLLM 不支持 serve（PR #47216）→ 只有 accept_len（block5 均值 4.18） |
-| **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
-| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
-| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
-| **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（vLLM load 不了） | 🟡 2000 step loss 降 | 🔴 **eval 精度差待排查** + vLLM 无法 load（arch 未注册,B7） |
-| **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
-| **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | 🟡 **进行中,周一(07-13)训完** | ⏳ hidden_states 07-10 修好,待训完 eval |
+| 工作线 | 模型 | 原生训练支持 | vLLM 部署支持 | 预训练模型 & 其 MAI 吞吐（vs no-MTP baseline） | 训练完成 | 训练后模型吞吐 / 卡点 |
+|---|---|---|---|---|---|---|
+| **—基线—** | 12B dense | — | ✅ | no-MTP(无 draft) **1106** · Google MTP **1382** | — | 参照线 |
+| **—基线—** | 26B-A4B MoE | — | ✅ | no-MTP(无 draft) **1766** · Google MTP **2678** | — | 参照线（最终靶子） |
+| **DSpark** | 12B dense | ✅（DeepSpec） | ❌（PR #47216 未 merge） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（不能 serve，只有 accept_len） | ✅ block5/block7 | 🔴 **blocked**：vLLM 不支持 serve → 只有 accept_len（block5 均值 4.18） |
+| **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | ❌（PR #47216 明确 not MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
+| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
+| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
+| **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 2000 step loss 降 | 🔴 **eval 精度差待排查** + vLLM 无法 load |
+| **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | ❌ | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
+| **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 🟡 待测 | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | ⏳ **hidden_states 周一(07-13)生成完 → 再接着训练** | hidden_states 07-10 修好,生成中 |
 
 > **注**：EAGLE-3 @speculators **原生支持 26B MoE,故不测 12B**（直接攻最终目标）;12B 那格由 EAGLE-3 @DSpark 覆盖。
 
