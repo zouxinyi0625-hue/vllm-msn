@@ -24,10 +24,15 @@ cd "$SCRIPT_DIR"
 
 MODEL_ROOT="${MODEL_ROOT:-/tmp/models/gemma4}"
 
-# Point the shared driver at the local 26B model (configs carry gated HF names).
-export GEMMA4_26B_TEXT_ONLY_MODEL_PATH="${MODEL_ROOT}/text_only"
-export GEMMA4_26B_ASSISTANT_MODEL_PATH="${MODEL_ROOT}/assistant"
-export _ModelDataPath_="${MODEL_ROOT}"
+# Point the shared driver at the local 26B model. Use the generic
+# GEMMA4_MODEL_PATH / GEMMA4_ASSISTANT_MODEL_PATH — these are the HIGHEST-priority
+# overrides in serve_align.sh, so they beat any stale 12B/26B env from a previous
+# run (which is what silently loaded the wrong 12B target before). One set of
+# vars, no path mixing.
+# Clear legacy/conflicting vars first so nothing can override the generic ones.
+unset GEMMA4_26B_TEXT_ONLY_MODEL_PATH GEMMA4_26B_ASSISTANT_MODEL_PATH _ModelDataPath_ GEMMA4_SPECULATOR_MODEL
+export GEMMA4_MODEL_PATH="${MODEL_ROOT}/text_only"
+export GEMMA4_ASSISTANT_MODEL_PATH="${MODEL_ROOT}/assistant"
 export GEMMA4_TOKENIZER="${MODEL_ROOT}/text_only"   # gated tokenizer -> use local dir
 
 # 26B-A4B on one GPU. Unlimited concurrency to match the baseline runs.
