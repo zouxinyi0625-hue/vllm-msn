@@ -102,45 +102,89 @@ per-position acceptance(26B-A4B MTP):`pos0 93.61 / pos1 87.08 / pos2 80.45 / pos
 
 ---
 
-## 3. 三方式对比矩阵(更新后)
+## 2.6 🔴 三条训练线真实进展快照(2026-07-10,用户口述状态)
 
-| 维度 | DeepSpec-EAGLE-3(Phase 1 焦点) | DeepSpec-DSpark(Phase 1 焦点) | MTP(Google assistant) | ~~speculators-EAGLE-3~~ |
-|---|---|---|---|---|
-| 代码位置 | `DeepSpec/deepspec/modeling/eagle3` | `DeepSpec/deepspec/modeling/dspark` | `gemma4-mtp-trainer`(自研) | ~~speculators fork~~ |
-| **能训 MoE(26B-A4B)** | ❌ `assert not enable_moe_block` | ❌ 同左,写死 dense | ✅(=当前基线结构) | ✅ 框架支持 |
-| **hidden-states 抽取** | ✅ 稳(DeepSpec target_cache) | ✅ 稳(同套 cache) | ⚠️ 需搭 shared_kv 通路 | ⛔ **MoE 上坏(§4)** |
-| 能训 dense 12B | ✅ config 现成 | ✅ 已跑通 | — | ✅ |
-| vllm serve 可用性 | ✅ 成熟 | ⚠️ PR #47216 未 merge 且仅 dense | ✅ 线上在用 | ✅ |
-| 训练 loss | soft CE 蒸馏 + TTT(ttt=7) | CE .1 + L1/TV .9 + confidence | 自研蒸馏 | soft CE + TTT |
-| **当前状态** | 🟢 Phase 1 焦点 | 🟢 Phase 1 焦点 | ⏸ paused(Phase 2 候选) | ⛔ 终止 |
+> **这是当前最新、最准的作战状态**,取代早前对各线的过时判断。三个方法(DSpark / MTP / EAGLE-3)现状如下。
+> EAGLE-3 要按**训练框架**分开看(speculators 和 DSpark 都能训 EAGLE-3,但状态完全不同)。
 
-> **关键洞察**:MoE(26B-A4B)在两个方向上都撞墙,且是同一障碍的两面 ——
-> - **speculators**:modeling 支持 MoE,但 vLLM hidden-states connector 在 MoE 上抽取失败(§4)。
-> - **DeepSpec**:hidden-states 抽取稳,但 modeling 写死 `assert not enable_moe_block`,拒绝 MoE。
->
-> **两阶段策略** = Phase 1 先在 dense-12B(社区支持成熟、工具链无坑)把方法验证扎实(§6);
-> Phase 2 迁回 26B-A4B MoE 最终目标(§6.5)。**dense-12B 是踏脚石,不是终点。**
+### 线① DSpark —— 主力,方法已验证有效 🟢
+- **实测有效**:在 **12B dense** 上训练后,accept rate **较未训练(off-the-shelf)有明显提升** → **DSpark 这套方法本身 work,是核心正向信号**。
+- 定位:理论上更快的**新技术**,是主押方向。
+- **两个限制(现状,非否决)**:
+  - **无 MoE(26B-A4B)原生训练支持** —— 最终目标要迁移。
+  - **vLLM 暂不支持 serve** —— 端到端 tok/s 出不来(卡 PR #47216,§8 B2)。
+- 注:早前"DSpark 未超 12B MTP(4.18 vs 4.27)"是跟 **Google MTP** 比的结果;**但主判据是"训 vs 没训"的增益**,这个是明确正向的。超越 Google MTP 是更高目标,非 pass/fail 线。
+
+### 线② MTP(Google assistant)—— 探索性,卡在无 finetune 先例 ⏸
+- Google 只提供**预训练 assistant**,效果本来就不错(=当前 26B/12B 基线)。
+- **目标**:用 **MAI Profile 数据 finetune** 提升 accept rate → 更快加速。
+- **真正卡点**:**社区没有 MTP 的 finetune 脚本**,`gemma4-mtp-trainer` 是从零自研的探索实现(single-step 蒸馏,`training_step.py`)。**探索性质,非主力。**
+- 已知结构缺陷(代码核实):当前是 single-step 蒸馏,**无 TTT**,尾部接受率会塌;若推进需补 TTT 多步自回归训练。
+
+### 线③ EAGLE-3 —— 按框架分两支
+**3a. speculators 框架的 EAGLE-3(26B MoE)🟢 复活推进中**
+- speculators 提供 **26B MoE 预训练 EAGLE-3 模型**,但在 **MAI Profile 上效果差**(accept rate 低,**负优化**)→ 再次印证必须自训。
+- 训练脚本有,之前卡在 **hidden_states 生成有问题**(§4 记的 ~25-30% mismatch)。
+- **✅ 今日突破(2026-07-10)**:加 `--no-enable-prefix-caching` **解决了 hidden_states 生成问题**,**正在保存 hidden_states,预计周一(2026-07-13)跑完**。→ **此线不再"终止",已复活。**
+
+**3b. DSpark 框架的 EAGLE-3 🟡 训练起来了但 eval 差**
+- 训练**已跑起来**:2000 step **loss 有下降**。
+- **但 eval 精度差,原因待排查**(train/eval 口径?TTT 步数?checkpoint 加载?—— 待深挖)。
+- DSpark 提供的 EAGLE-3 模型 **vLLM 无法 load 推理** → 待测**新版 vLLM** 是否支持。
+
+### 一句话现状
+| 线 | 训练 | 现状 | 下一步 |
+|---|---|---|---|
+| ① DSpark | ✅ 12B dense 训练**有明显增益** | 🟢 方法验证有效 | MoE 训练支持 + vLLM serve(PR #47216) |
+| ② MTP finetune | 自研 single-step 脚本 | ⏸ 探索(无社区先例) | 补 TTT;或维持探索 |
+| ③a speculators-EAGLE-3(MoE) | ✅ | 🟢 **hidden_states 今日修好,周一出结果** | 等周一训练完 → eval |
+| ③b DSpark-EAGLE-3 | ✅ 2000 step loss 降 | 🟡 **eval 精度差待排查** + vLLM load 不了 | 查 eval 差原因;测新版 vLLM |
 
 ---
 
-## 4. ⛔ 已终止:speculators fork EAGLE-3(26B-A4B)
+## 3. 三方式对比矩阵(更新后)
 
-> **终止时间**:2026-07-09。分支 `speculators-fork@dev/maiprofile` 冻结,脚本保留供复盘,不再推进。
+> 最新逐线状态见 §2.6(2026-07-10 快照)。此矩阵为静态能力对比。
 
-### 死因(三条,全部实测确认)
-1. **hidden-states prepare 大量 mismatch**:vLLM 的 `ExampleHiddenStatesConnector` 对 Gemma4-26B-A4B(MoE)抽取,
-   **online / offline API 都有** ~25–30% 样本 `hs len != tokens`(partial / len=0),被迫 skip。跑多少并发都一样。
+| 维度 | DeepSpec-EAGLE-3 | DeepSpec-DSpark(主力) | MTP(Google assistant) | speculators-EAGLE-3(MoE) |
+|---|---|---|---|---|
+| 代码位置 | `DeepSpec/deepspec/modeling/eagle3` | `DeepSpec/deepspec/modeling/dspark` | `gemma4-mtp-trainer`(自研) | `speculators-fork` |
+| **能训 MoE(26B-A4B)** | ❌ `assert not enable_moe_block` | ❌ 同左,写死 dense | ✅(=当前基线结构) | ✅ 框架支持 |
+| **hidden-states 抽取** | ✅ 稳(DeepSpec target_cache) | ✅ 稳(同套 cache) | ⚠️ 需搭 shared_kv 通路 | ✅ **2026-07-10 修好**(no-prefix-caching) |
+| 能训 dense 12B | ✅ config 现成 | ✅ **训练有明显增益** | — | ✅ |
+| vllm serve 可用性 | ⚠️ DSpark-EAGLE3 模型 vLLM load 不了(待测新版) | ⚠️ PR #47216 未 merge 且仅 dense | ✅ 线上在用 | 待测 |
+| 训练 loss | soft CE 蒸馏 + TTT(ttt=7) | CE .1 + L1/TV .9 + confidence | 自研 single-step 蒸馏(无 TTT) | soft CE + TTT |
+| **当前状态(见 §2.6)** | 🟡 训起来了 2000step loss 降但 **eval 差待查** | 🟢 **主力,方法验证有效** | ⏸ 探索(无 finetune 先例) | 🟢 **复活,周一出 hidden_states/训练** |
+
+> **关键洞察(仍成立)**:MoE(26B-A4B)训练支持是分水岭 ——
+> - **DeepSpec(EAGLE-3/DSpark)**:hidden-states 抽取稳,但 modeling 写死 `assert not enable_moe_block`,拒绝 MoE。
+> - **speculators**:modeling 支持 MoE,hidden-states 抽取此前坏、**2026-07-10 已修**(`--no-enable-prefix-caching`)。
+> - **MTP**:结构原生支持 MoE(=官方 assistant),但无社区 finetune 脚本,自研中。
+>
+> **两阶段策略** = Phase 1 先在 dense-12B(工具链无坑)验证方法(§6);Phase 2 迁 26B-A4B MoE(§6.5)。
+> **但注意**:speculators-EAGLE-3 和 MTP 两条线**能直接在 MoE 上训**,不必等 dense 验证 —— 三线并进。
+
+---
+
+## 4. ⚠️→🟢 speculators fork EAGLE-3(26B-A4B MoE)—— 曾受阻,2026-07-10 复活
+
+> **状态更正(2026-07-10)**:此线**不再终止**。2026-07-09 曾因 hidden_states 生成 mismatch 判定终止,
+> 但 **2026-07-10 加 `--no-enable-prefix-caching` 解决了 hidden_states 生成问题**,正在保存 hidden_states,
+> **预计周一(2026-07-13)训练跑完**。最新状态见 §2.6 线③a。以下保留原始受阻记录供复盘。
+
+### 曾经的受阻点(2026-07-09 记录,部分已解)
+1. ~~**hidden-states prepare 大量 mismatch**~~:vLLM 的 `ExampleHiddenStatesConnector` 对 Gemma4-26B-A4B(MoE)抽取,
+   **online / offline API 都有** ~25–30% 样本 `hs len != tokens`(partial / len=0),被迫 skip。
+   → **✅ 2026-07-10 已解**:`--no-enable-prefix-caching`(prefix caching 是根因,与早前推测一致)。
 2. **退回 transformers 又撞墙**:`flash_attn` 不支持 `head_dim > 256`(Gemma4 MoE 正是),
-   不开 flash → SDPA fallback 到 math mode,~38s/it,慢到不可用。
-3. **社区无参照**:这条 MoE + speculators 路线没人训过,无先例可循,试错成本过高。
+   不开 flash → SDPA fallback 到 math mode,~38s/it,慢到不可用。→ 现走 vLLM offline 抽取路径,已绕开。
+3. **社区无参照**:这条 MoE + speculators 路线没人训过,无先例可循 —— 仍是探索,但已推进到能出 hidden_states。
 
-> **注**:此终止**不影响最终目标**。26B-A4B MoE 仍是终点(§6.5),只是不再走 speculators 这条实现路径。
-
-### 附:该线曾产出的资产(冻结在 `examples/train/maiprofile/`)
+### 附:该线资产(`examples/train/maiprofile/`)
 `split_maiprofile_eagle3.py` / `regenerate_maiprofile.py` / `prepare_maiprofile_eagle3.sh` /
 `gen_hidden_states_{all.sh, vllm_offline.py, transformers.py}` / `launch_vllm_gemma4_26b.sh` /
 `train_eagle3_maiprofile.sh` / `run_e2e.sh` / `probe_gemma4_26b.py`。
-(regen ~73k ok、prepare ~69k valid 是真的;卡死在 hidden-states 这一步。)
+(regen ~73k ok、prepare ~69k valid;hidden-states 抽取 prefix-caching bug 已于 2026-07-10 修复。)
 
 ---
 
@@ -254,6 +298,7 @@ bash scripts/train_maiprofile/train_dspark_short_sync.sh
 | 2026-07-08 | 账号 SSH 隔离生效,B1 解除。 |
 | 2026-07-09 | **路线调整 + 两阶段确立**:speculators fork EAGLE-3(26B-A4B)因 MoE hidden-states 双向撞墙**终止**(§4)。确立两阶段:Phase 1 用 **dense-12B**(社区支持成熟)验证 EAGLE-3/DSpark+MAI 方法;Phase 2 **迁回 26B-A4B MoE(最终目标,不放弃)**(§6.5)。MTP 暂停,作为 Phase 2 候选路径。 |
 | 2026-07-10 | **逐层 MAI Profile MTP 基线全部完成(§2.5)**:12B(dense)+ 26B-A4B(MoE)各测 MTP + no-MTP 逐层 online。26B-A4B MoE MTP 聚合 2678 tok/s / accept_len 4.79 / 加速比 1.52×(seasonality 2.25×,free-form 层 1.27–1.39×)。DSpark(自训 block5,dense-12B)逐层 accept_len 均值 4.18,**尚未超** 12B MTP(4.27),需继续调。新增 `run_26b_maiprofile_online.sh`(薄封装,统一走 `GEMMA4_MODEL_PATH`,修了 12B/26B 路径串味导致的 CUDA gather 崩溃)。 |
+| 2026-07-10 | **三线进展快照 + 状态更正(§2.6)**:① DSpark 主力,12B dense 训练**较未训练有明显 accept 增益**,方法验证有效(限制:无 MoE 训练 + vLLM 不能 serve)。② MTP 探索性,卡在无社区 finetune 脚本。③a **speculators-EAGLE-3(MoE)复活**:`--no-enable-prefix-caching` 修好 hidden_states 生成,周一(07-13)出训练结果 —— §4 从"已终止"改为"复活推进中"。③b DSpark-EAGLE-3 训起来了(2000 step loss 降)但 **eval 精度差待排查** + vLLM load 不了。**认知修正**:speculators-EAGLE-3 与 MTP 能直接在 MoE 上训,不必等 dense 验证,三线并进。 |
 
 ---
 
