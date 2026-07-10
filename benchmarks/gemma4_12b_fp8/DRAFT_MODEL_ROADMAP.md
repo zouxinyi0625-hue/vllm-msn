@@ -37,7 +37,7 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 | **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | ❌（PR #47216 明确 not MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
 | **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
-| **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 2000 step loss 降 | 🔴 **eval 精度差待排查** + vLLM 无法 load |
+| **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 **ttt7 / ttt5 训练中** | 之前 eval 差=**用错数据 cache**,已修正重训;待训完 eval + vLLM load |
 | **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | ❌ | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 🟡 待测 | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | ⏳ **hidden_states 周一(07-13)生成完 → 再接着训练** | hidden_states 07-10 修好,生成中 |
 
@@ -131,7 +131,7 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
   bash scripts/train_maiprofile/train_dspark_short_sync.sh
   # 调步数: MAX_TRAIN_STEPS=3000 CHECKPOINTING_STEPS=250
   ```
-- **现状**:训起来了,2000 step loss 降,**但 eval 精度差,原因待排查**(train/eval 口径?TTT?checkpoint 加载?)。
+- **现状**:**ttt7 / ttt5 两个配置训练中**。早前 eval 精度差的原因已定位 = **用错了数据 cache**,修正后重训。
 - **serve 问题**:DSpark 放出的 EAGLE-3 模型 **vLLM 无法 load**(arch `Gemma4Eagle3Model` 未在 vllm-msn `registry.py` 注册,`gemma4.py` 无该类)→ 待测新版 vLLM 是否支持。
 
 ### 迁 MoE 的两条候选路径(Phase 2)
