@@ -83,17 +83,28 @@ accept **9.75%**、accept_len **1.49**、pos0 31%。**通用 off-the-shelf draft
 
 ---
 
-## ★ 四、当前重点 & 待办(按优先级)
+## ★ 四、本周重点（Week of 2026-07-13）
 
-| 优先级 | 事项 | 线 | 依赖 |
-|---|---|---|---|
-| **P0** | 等 speculators-EAGLE3 周一训完 → eval 逐层 accept | 3a | hidden_states(已修) |
-| **P0** | 排查 DSpark-EAGLE3「loss 降但 eval 差」 | 3b | — |
-| **P1** | DSpark serve:等 vLLM PR #47216 merge,先 12B 验证端到端 tok/s | 1 | PR #47216 |
-| **P1** | 测新版 vLLM 能否 load DSpark-EAGLE3 模型 | 3b | — |
-| **P2** | DSpark 继续调(block size / 步数 / 层加权,主攻 free-form 层) | 1 | — |
-| **P2** | MTP finetune:补 TTT 多步自回归后跑一版 smoke | 2 | 改 training_step |
-| **P3** | DSpark/DeepSpec-EAGLE3 迁 MoE:拆 `assert not enable_moe_block` + 对齐 MoE hidden | 1/3b | Phase 1 验证后 |
+> **本周只聚焦两条线**：DSpark 的 vLLM 集成 + 基于 pretrain 微调；MTP 完成训练 + 部署测试。
+> EAGLE-3 两支（@spec hidden_states 生成中、@DSpark ttt7/ttt5 训练中）本周挂后台跑,出结果再 eval,不占本周主精力。
+
+### 主线 A — DSpark 集成 + 微调
+1. **基于 pretrain model 微调 MAI Profile** —— 不再 from scratch。
+   依据:实测 **pretrain draft 与 from-scratch 训练的 model accept_len 差不多** → 从 pretrain 起步微调更省、更快收敛。
+2. **DSpark 的 vLLM 部署** —— 打通 serve（当前最大系统性卡点,DSpark 系全线"能训不能部署"）。
+   路径:等/跟 PR #47216,或测新版 vLLM,目标先在 12B 出**端到端 tok/s**（对标 12B MTP 1382）。
+
+### 主线 B — MTP 训练 + 部署测试
+3. **完成 MTP 训练** —— `gemma4-mtp-trainer` 跑通实训（注意:当前 single-step 缺 TTT,尾部会塌,建议先补 TTT;见 §五线2）。
+4. **MTP 部署测试** —— MTP 原生可 serve,训完导出 → 用 `run_maiprofile_online.sh` 测逐层 accept + tok/s,对标基线。
+
+### 本周结束应能回答
+- DSpark 微调后 accept 是否超 pretrain/from-scratch？**能不能在 vLLM 上 serve 出真实 tok/s？**
+- MTP 训练能否跑通并部署？训后 tok/s vs Google MTP 基线（12B 1382 / 26B 2678）如何？
+
+### 挂后台（出结果再处理,非本周主线）
+- EAGLE-3 @spec：hidden_states 周一生成完 → 接着训练 → 训完 eval 26B MoE 逐层。
+- EAGLE-3 @DSpark：ttt7 / ttt5 训练中（cache bug 已修）→ 训完 eval + ttt7 vs ttt5 对比。
 
 **成功判据**:tok/s 和 accept_len 都看;所有 eval 输出**总 tok/s + 逐层 accept_len + per-position acceptance**。
 tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量高 ≠ 端到端快)。
