@@ -10,7 +10,7 @@ NUM_PROMPTS=${3:-1000}
 GPU_UTIL=${4:-0.45}
 
 # --- Environment ---
-export _ModelDataPath_=/scratch/azureml/cr/j/3516b4b376e7447d9bb012f326e5b81b/exe/wd/vllm-msn/models
+export _ModelDataPath_=${_ModelDataPath_:-/scratch/azureml/cr/j/3516b4b376e7447d9bb012f326e5b81b/exe/wd/vllm-msn/models}
 
 echo "=== Gemma4 E011 End-to-End Test ==="
 echo "  Models: ${_ModelDataPath_}"
