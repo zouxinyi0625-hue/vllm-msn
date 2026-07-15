@@ -33,9 +33,9 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 |---|---|---|---|---|---|---|
 | **—基线—** | 12B dense | — | ✅ | no-MTP(无 draft) **1106** · Google MTP **1382** | — | 参照线 |
 | **—基线—** | 26B-A4B MoE | — | ✅ | no-MTP(无 draft) **1766** · Google MTP **2678** | — | 参照线（最终靶子） |
-| **DSpark** | 12B dense | ✅（DeepSpec） | ❌（PR #47216 未 merge） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（不能 serve，只有 accept_len） | ✅ block5/block7 | 🔴 **blocked**：vLLM 不支持 serve → 只有 accept_len（block5 均值 4.18） |
+| **DSpark** | 12B dense | ✅（DeepSpec） | ❌（PR #47216 未 merge） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（不能 serve，只有 accept_len） | ✅ **from-pretrain 微调跑完** | 🟢 **微调结果 > from-scratch > zero-shot**（accept 明显更优）;待 vLLM serve 出 tok/s |
 | **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | ❌（PR #47216 明确 not MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
-| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | ❌ 未实训 | ⏳ **待训**：脚本就绪未跑，需先补 TTT |
+| **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | 🟡 **训练跑起来了** | ⏳ 训完导出 → 部署测逐层 accept + tok/s |
 | **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
 | **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 **ttt7 / ttt5 训练中** | 之前 eval 差=**用错数据 cache**,已修正重训;待训完 eval + vLLM load |
 | **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | ❌ | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
@@ -45,7 +45,7 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 
 **三条核心结论**：
 1. **自训是必须的** —— 官方 EAGLE-3 draft 在 26B MoE 上 net-negative（931 tok/s / accept 9.75%,比不开 spec 还慢）。
-2. **DSpark 方法 work** —— 12B dense 训练后 accept rate 较未训练明显提升。目前最强正向信号。
+2. **DSpark 方法 work,且"从 pretrain 微调"最优** —— 12B dense 上 **from-pretrain 微调 > from-scratch > zero-shot**（accept 明显更优）。→ 后续统一走"pretrain 起步微调"路线（更省、收敛更快、效果更好）。
 3. **MoE 是分水岭** —— DSpark/DeepSpec-EAGLE3 写死 dense；只有 **MTP** 和 **speculators-EAGLE3** 能直接在 MoE 上训 → 最终目标靠这两条,或给 DSpark 加 MoE 支持。
 
 ---
@@ -89,14 +89,13 @@ accept **9.75%**、accept_len **1.49**、pos0 31%。**通用 off-the-shelf draft
 > EAGLE-3 两支（@spec hidden_states 生成中、@DSpark ttt7/ttt5 训练中）本周挂后台跑,出结果再 eval,不占本周主精力。
 
 ### 主线 A — DSpark 集成 + 微调
-1. **基于 pretrain model 微调 MAI Profile** —— 不再 from scratch。
-   依据:实测 **pretrain draft 与 from-scratch 训练的 model accept_len 差不多** → 从 pretrain 起步微调更省、更快收敛。
-2. **DSpark 的 vLLM 部署** —— 打通 serve（当前最大系统性卡点,DSpark 系全线"能训不能部署"）。
-   路径:等/跟 PR #47216,或测新版 vLLM,目标先在 12B 出**端到端 tok/s**（对标 12B MTP 1382）。
+1. ✅ **基于 pretrain model 微调 MAI Profile（12B,已跑完）** —— 结果 **微调 > from-scratch > zero-shot**,验证了"从 pretrain 起步"路线。
+2. 🔜 **DSpark 的 vLLM 部署** —— 打通 serve（当前最大系统性卡点,DSpark 系全线"能训不能部署"）。
+   路径:等/跟 PR #47216,或测新版 vLLM,目标先在 12B 出**端到端 tok/s**（对标 12B MTP 1382）。**← 本周剩余硬骨头**
 
 ### 主线 B — MTP 训练 + 部署测试
-3. **完成 MTP 训练** —— `gemma4-mtp-trainer` 跑通实训（注意:当前 single-step 缺 TTT,尾部会塌,建议先补 TTT;见 §五线2）。
-4. **MTP 部署测试** —— MTP 原生可 serve,训完导出 → 用 `run_maiprofile_online.sh` 测逐层 accept + tok/s,对标基线。
+3. 🟡 **MTP 训练（已跑起来）** —— `gemma4-mtp-trainer` 实训进行中。（注意:当前 single-step 缺 TTT,尾部可能塌;训完看 per-position 衰减,若明显再考虑补 TTT 重训。）
+4. 🔜 **MTP 部署测试** —— MTP 原生可 serve,训完导出 → 用 `run_maiprofile_online.sh` 测逐层 accept + tok/s,对标基线（1382 / 2678）。
 
 ### 本周结束应能回答
 - DSpark 微调后 accept 是否超 pretrain/from-scratch？**能不能在 vLLM 上 serve 出真实 tok/s？**
@@ -173,6 +172,7 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
 | 2026-07-09 | 曾判 speculators-EAGLE3 因 MoE hidden-states mismatch 终止(后于 07-10 复活)。 |
 | 2026-07-10 | **逐层 MAI Profile 基线全部完成**(12B + 26B-A4B MTP/no-MTP,§二)。26B MoE MTP 聚合 2678 tok/s / 加速比 1.52×。新增 `run_26b_maiprofile_online.sh`,修了 12B/26B 路径串味导致的 CUDA gather 崩溃。 |
 | 2026-07-10 | **三线状态更新**:DSpark 12B 训练有明显增益(主力);MTP 探索(无 finetune 先例、缺 TTT);**speculators-EAGLE3 复活**(prefix-caching bug 修好,周一训完);DSpark-EAGLE3 loss 降但 eval 差。**认知修正**:speculators-EAGLE3 与 MTP 能直接在 MoE 上训,三线并进。 |
+| 2026-07-13 | **两主线推进**:① **DSpark 12B from-pretrain 微调跑完** → 结果 **微调 > from-scratch > zero-shot**,确立"从 pretrain 起步微调"路线(核心结论 2)。② **MTP 训练已跑起来**(`gemma4-mtp-trainer` 实训中)。DSpark vLLM 部署 + MTP 部署测试为本周剩余重点。 |
 
 ---
 
