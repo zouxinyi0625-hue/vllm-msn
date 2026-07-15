@@ -20,7 +20,7 @@ RESULT_FILE="${OUTPUT_DIR}/result_$(date +%Y%m%d_%H%M%S).txt"
 BASE_URL=""
 NUM_PROMPTS=1000
 MODEL_NAME=gemma4
-CONCURRENCY=${CONCURRENCY:-32}
+CONCURRENCY=${CONCURRENCY:-inf}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -78,7 +78,11 @@ done
 echo "Server ready (waited ${WAITED}s)."
 echo ""
 
-# --- Single concurrency test ---
+# --- Single test ---
+CONC_ARG=()
+if [[ "$CONCURRENCY" != "inf" ]]; then
+  CONC_ARG=(--max-concurrency "$CONCURRENCY")
+fi
 echo "========================================"
 echo "  TEST: rate=inf, max-concurrency=${CONCURRENCY}"
 echo "========================================"
@@ -95,8 +99,7 @@ COMMON_ARGS=(
   --request-rate inf
 )
 
-vllm bench serve "${COMMON_ARGS[@]}" \
-  --max-concurrency "$CONCURRENCY" \
+vllm bench serve "${COMMON_ARGS[@]}" "${CONC_ARG[@]}" \
   2>&1 | tee "$RESULT_FILE"
 echo ""
 
