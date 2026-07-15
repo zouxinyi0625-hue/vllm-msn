@@ -20,6 +20,7 @@ RESULT_FILE="${OUTPUT_DIR}/result_$(date +%Y%m%d_%H%M%S).txt"
 BASE_URL=""
 NUM_PROMPTS=1000
 MODEL_NAME=gemma4
+CONCURRENCY=${CONCURRENCY:-32}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -77,9 +78,9 @@ done
 echo "Server ready (waited ${WAITED}s)."
 echo ""
 
-# --- Throughput test (request_rate=inf) ---
+# --- Single concurrency test ---
 echo "========================================"
-echo "  TEST 1: Max throughput (rate=inf, no concurrency limit)"
+echo "  TEST: rate=inf, max-concurrency=${CONCURRENCY}"
 echo "========================================"
 COMMON_ARGS=(
   --backend openai-chat
@@ -95,20 +96,9 @@ COMMON_ARGS=(
 )
 
 vllm bench serve "${COMMON_ARGS[@]}" \
+  --max-concurrency "$CONCURRENCY" \
   2>&1 | tee "$RESULT_FILE"
-
 echo ""
 
-# --- Max-concurrency sweep ---
-for CONC in 32 64 128; do
-  echo "========================================"
-  echo "  TEST: rate=inf, max-concurrency=${CONC}"
-  echo "========================================"
-  vllm bench serve "${COMMON_ARGS[@]}" \
-    --max-concurrency "$CONC" \
-    2>&1 | tee -a "$RESULT_FILE"
-  echo ""
-done
-
-echo "=== All tests complete ==="
+echo "=== Test complete ==="
 echo "Results saved to: ${RESULT_FILE}"
