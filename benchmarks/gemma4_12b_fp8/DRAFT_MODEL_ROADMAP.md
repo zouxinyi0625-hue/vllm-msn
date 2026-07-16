@@ -36,7 +36,7 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 | **DSpark** | 12B dense | ✅（DeepSpec） | ❌（PR #47216 未 merge） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（不能 serve，只有 accept_len） | ✅ **from-pretrain 微调跑完** | 🟢 **微调结果 > from-scratch > zero-shot**（accept 明显更优）;待 vLLM serve 出 tok/s |
 | **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | ❌（PR #47216 明确 not MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | 🟡 **训练跑起来了** | ⏳ 训完导出 → 部署测逐层 accept + tok/s |
-| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ❌ 未实训 | ⏳ **待训**：目标 +10~20% → ~2946–3214 tok/s |
+| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ✅ 训完(step600) | 🔴 **部署测试结果异常**：finetuned accept 崩到 3-9%/accept_len~1.2（疑 bug,非训练质量,§四主线B待排查） |
 | **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 **ttt7 / ttt5 训练中** | 之前 eval 差=**用错数据 cache**,已修正重训;待训完 eval + vLLM load |
 | **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | ❌ | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 🟡 待测 | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | ⏳ **hidden_states 周一(07-13)生成完 → 再接着训练** | hidden_states 07-10 修好,生成中 |
@@ -94,8 +94,12 @@ accept **9.75%**、accept_len **1.49**、pos0 31%。**通用 off-the-shelf draft
    路径:等/跟 PR #47216,或测新版 vLLM,目标先在 12B 出**端到端 tok/s**（对标 12B MTP 1382）。**← 本周剩余硬骨头**
 
 ### 主线 B — MTP 训练 + 部署测试
-3. 🟡 **MTP 训练（已跑起来）** —— `gemma4-mtp-trainer` 实训进行中。（注意:当前 single-step 缺 TTT,尾部可能塌;训完看 per-position 衰减,若明显再考虑补 TTT 重训。）
-4. 🔜 **MTP 部署测试** —— MTP 原生可 serve,训完导出 → 用 `run_maiprofile_online.sh` 测逐层 accept + tok/s,对标基线（1382 / 2678）。
+3. ✅ **MTP 训练完成**（`gemma4-mtp-trainer`,26B,checkpoint `…/mtp_maiprofile/20260715_014947/step600`）。
+4. 🔴 **MTP 部署测试 → 结果异常(2026-07-15)**：finetuned draft 逐层 accept **崩到 3-9%** / accept_len **1.17-1.46**（见下）。
+   - 对比 26B MTP baseline(Google assistant)：seasonality **99.03%→3.32%**、actual 75.45%→8.05%、intent 59.34%→9.16%、temporal 54.50%→9.20%、commercial 69.10%→6.69%。
+   - **判断：几乎肯定是 bug,不是训练质量问题**。accept_len≈1 = 投机解码第一个 token 就被拒,比官方 EAGLE-3 负优化(9.75%)还差、接近随机。seasonality 从 99% 崩到 3% 不可能靠"没调好"解释。
+   - **待排查方向**：① checkpoint 加载是否正确（config/权重是否 save_pretrained 完整、vLLM 是否真加载了 finetuned 权重而非随机初始化）；② 训练保存的 assistant 结构/dtype 是否与 vLLM 期望一致；③ 训练本身是否把权重训坏（single-step 无 TTT + 只训 600 step,可能过拟合/破坏 stock 能力）；④ tokenizer/embedding 对齐。
+   - 复现命令与 server 三行核对见 §五线2。**下一步先做健全性校验**：用 stock assistant 跑同一 harness 应 ~80%,确认 harness 无恙,再逐项排查 checkpoint。
 
 ### 本周结束应能回答
 - DSpark 微调后 accept 是否超 pretrain/from-scratch？**能不能在 vLLM 上 serve 出真实 tok/s？**
@@ -173,6 +177,7 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
 | 2026-07-10 | **逐层 MAI Profile 基线全部完成**(12B + 26B-A4B MTP/no-MTP,§二)。26B MoE MTP 聚合 2678 tok/s / 加速比 1.52×。新增 `run_26b_maiprofile_online.sh`,修了 12B/26B 路径串味导致的 CUDA gather 崩溃。 |
 | 2026-07-10 | **三线状态更新**:DSpark 12B 训练有明显增益(主力);MTP 探索(无 finetune 先例、缺 TTT);**speculators-EAGLE3 复活**(prefix-caching bug 修好,周一训完);DSpark-EAGLE3 loss 降但 eval 差。**认知修正**:speculators-EAGLE3 与 MTP 能直接在 MoE 上训,三线并进。 |
 | 2026-07-13 | **两主线推进**:① **DSpark 12B from-pretrain 微调跑完** → 结果 **微调 > from-scratch > zero-shot**,确立"从 pretrain 起步微调"路线(核心结论 2)。② **MTP 训练已跑起来**(`gemma4-mtp-trainer` 实训中)。DSpark vLLM 部署 + MTP 部署测试为本周剩余重点。 |
+| 2026-07-15 | **MTP 26B finetuned 部署测试 → 结果异常**:step600 checkpoint 逐层 accept 崩到 3-9% / accept_len ~1.2(seasonality 99%→3.3%),比官方 EAGLE-3 负优化还差、接近随机。判断为 bug(checkpoint 加载/结构/权重)而非训练质量,已记 §四主线B 待排查。下一步先用 stock assistant 跑同 harness 做健全性校验。 |
 
 ---
 
