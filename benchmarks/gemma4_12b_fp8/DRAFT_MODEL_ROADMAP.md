@@ -36,7 +36,7 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 | **DSpark** | 12B dense | ✅（DeepSpec） | ❌（PR #47216 未 merge） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（不能 serve，只有 accept_len） | ✅ **from-pretrain 微调跑完** | 🟢 **微调结果 > from-scratch > zero-shot**（accept 明显更优）;待 vLLM serve 出 tok/s |
 | **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | ❌（PR #47216 明确 not MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | 🟡 **训练跑起来了** | ⏳ 训完导出 → 部署测逐层 accept + tok/s |
-| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ✅ 训完(step600) | 🔴 **部署测试结果异常**：finetuned accept 崩到 3-9%/accept_len~1.2（疑 bug,非训练质量,§四主线B待排查） |
+| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ✅ 训完(step600) | 🔴 **finetuned accept 崩到 3-9%**：非部署/代码 bug（已排除）,疑 **lr=6e-4 对 warm-start 过高训飞**,降 lr 重训（§四主线B） |
 | **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 **ttt7 / ttt5 训练中** | 之前 eval 差=**用错数据 cache**,已修正重训;待训完 eval + vLLM load |
 | **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | ❌ | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 🟡 待测 | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | ⏳ **hidden_states 周一(07-13)生成完 → 再接着训练** | hidden_states 07-10 修好,生成中 |
@@ -95,11 +95,14 @@ accept **9.75%**、accept_len **1.49**、pos0 31%。**通用 off-the-shelf draft
 
 ### 主线 B — MTP 训练 + 部署测试
 3. ✅ **MTP 训练完成**（`gemma4-mtp-trainer`,26B,checkpoint `…/mtp_maiprofile/20260715_014947/step600`）。
-4. 🔴 **MTP 部署测试 → 结果异常(2026-07-15)**：finetuned draft 逐层 accept **崩到 3-9%** / accept_len **1.17-1.46**（见下）。
+4. 🔴 **MTP 部署测试 → 结果异常(2026-07-15),已定位方向(2026-07-16)**：finetuned draft 逐层 accept **崩到 3-9%** / accept_len **1.17-1.46**。
    - 对比 26B MTP baseline(Google assistant)：seasonality **99.03%→3.32%**、actual 75.45%→8.05%、intent 59.34%→9.16%、temporal 54.50%→9.20%、commercial 69.10%→6.69%。
-   - **判断：几乎肯定是 bug,不是训练质量问题**。accept_len≈1 = 投机解码第一个 token 就被拒,比官方 EAGLE-3 负优化(9.75%)还差、接近随机。seasonality 从 99% 崩到 3% 不可能靠"没调好"解释。
-   - **待排查方向**：① checkpoint 加载是否正确（config/权重是否 save_pretrained 完整、vLLM 是否真加载了 finetuned 权重而非随机初始化）；② 训练保存的 assistant 结构/dtype 是否与 vLLM 期望一致；③ 训练本身是否把权重训坏（single-step 无 TTT + 只训 600 step,可能过拟合/破坏 stock 能力）；④ tokenizer/embedding 对齐。
-   - 复现命令与 server 三行核对见 §五线2。**下一步先做健全性校验**：用 stock assistant 跑同一 harness 应 ~80%,确认 harness 无恙,再逐项排查 checkpoint。
+   - **健全性校验已过**：stock assistant 跑同一 harness = seasonality 99.02% / actual 76.21% / …（与基线逐位重合）→ **harness/serve/数据/环境全正常,bug 不在部署侧**。
+   - **checkpoint 结构正常**：config 仅差 transformers 版本号,权重 key 数量(48)+名字与 stock 完全一致,文件齐全 → vLLM 确实加载了 finetuned 权重(非随机初始化)。
+   - **代码审查:训练代码本身没有一眼可见的 bug** —— TTT 已实现(`ttt_steps=5`)、embed double-scaling 坑已避开(`training_step.py:132`)、位置对齐/recurrent hidden 看起来对。
+   - **⇒ 结论:不是部署/加载/代码逻辑 bug,是训练把 warm-start 权重训坏了**。最可能元凶:**lr=6e-4 对 warm-start 微调过高**(`run.sh` 用的是 DSpark **从头训**的超参;warm-start 从好的 stock 出发,6e-4 几百步就冲垮预训练权重)。对比 DSpark"从 pretrain 微调效果好"很可能就是用了更低 lr。
+   - **验证方向**:① 看训练 log 的 `step*_soft_ce` loss 曲线(先降后升=训飞);② 测更早 checkpoint(step100/200,若 SAVE_EVERY 有设)——早期正常越训越差=坐实 lr。
+   - **修复(若坐实)**:warm-start 降 lr 1–2 个量级重训:`LR=6e-5`(或 `2e-5`) `EPOCHS=2 bash run.sh`。
 
 ### 本周结束应能回答
 - DSpark 微调后 accept 是否超 pretrain/from-scratch？**能不能在 vLLM 上 serve 出真实 tok/s？**
