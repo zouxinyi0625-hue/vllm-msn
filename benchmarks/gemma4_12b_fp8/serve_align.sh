@@ -99,16 +99,19 @@ if [[ -n "${GEMMA4_SPECULATOR_MODEL:-}" ]]; then
 fi
 
 # Speculative decoding wiring.
-# - eagle3: self-contained speculator loaded via --speculative-config JSON.
+# - eagle3 / dspark: self-contained speculator loaded via --speculative-config
+#   JSON (method carried through from the config). DSpark auto-normalizes
+#   target_layer_ids / block_size from the draft; num_speculative_tokens comes
+#   from spec_tokens (e.g. 7 for dspark_gemma4_12b_block7).
 # - default (MTP): assistant draft loaded via --spec-model / --spec-tokens.
-if [[ "${SPEC_METHOD}" == "eagle3" ]]; then
+if [[ "${SPEC_METHOD}" == "eagle3" || "${SPEC_METHOD}" == "dspark" ]]; then
   if [[ "${SPEC_TOKENS:-0}" != "0" && -n "${SPECULATOR_MODEL:-}" ]]; then
-    SPEC_CONFIG_JSON=$(python3 - "$SPECULATOR_MODEL" "$SPEC_TOKENS" <<'PY'
+    SPEC_CONFIG_JSON=$(python3 - "$SPECULATOR_MODEL" "$SPEC_TOKENS" "$SPEC_METHOD" <<'PY'
 import json, sys
 print(json.dumps({
     "model": sys.argv[1],
     "num_speculative_tokens": int(sys.argv[2]),
-    "method": "eagle3",
+    "method": sys.argv[3],
 }))
 PY
 )
