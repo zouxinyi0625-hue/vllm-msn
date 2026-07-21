@@ -33,10 +33,10 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 |---|---|---|---|---|---|---|
 | **—基线—** | 12B dense | — | ✅ | no-MTP(无 draft) **1106** · Google MTP **1382** | — | 参照线 |
 | **—基线—** | 26B-A4B MoE | — | ✅ | no-MTP(无 draft) **1766** · Google MTP **2678** | — | 参照线（最终靶子） |
-| **DSpark** | 12B dense | ✅（DeepSpec） | ❌（PR #47216 未 merge） | 有（`deepseek/dspark_gemma4_12b_block7`）· **没测吞吐**（不能 serve，只有 accept_len） | ✅ **from-pretrain 微调跑完** | 🟢 **微调结果 > from-scratch > zero-shot**（accept 明显更优）;待 vLLM serve 出 tok/s |
+| **DSpark** | 12B dense | ✅（DeepSpec） | ✅ **新 vLLM + patch 跑通** | 有（`deepseek/dspark_gemma4_12b_block7`）· zero-shot dspark ≈ mtp（sc1 通用集） | ✅ **from-pretrain 微调跑完** | 🟢 **端到端已测**：warm-start finetune **每层都超 zero-shot**（commercial +1.56 / temporal +1.28 accept_len；seasonality 已饱和）|
 | **DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block` | ❌（PR #47216 明确 not MoE） | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **MTP** | 12B dense | 🟡 无社区脚本，自研 single-step（缺 TTT） | ✅ | 有（Google assistant） · **1382 tok/s**（1.25× over 1106） | 🟡 **训练跑起来了** | ⏳ 训完导出 → 部署测逐层 accept + tok/s |
-| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（线上在用） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ✅ 训完(step600) | 🔴 **finetuned accept 崩到 3-9%**：非部署/代码 bug（已排除）,疑 **lr=6e-4 对 warm-start 过高训飞**,降 lr 重训（§四主线B） |
+| **MTP** | 26B-A4B MoE | 🟡 自研，官方 assistant 原生支持 MoE | ✅（**embedding-sharing bug 已修**） | 有（Google assistant） · **2678 tok/s**（1.52× over 1766） | ✅ 训完(step600) | 🟢 **vLLM 已修好**：CUDA graph **2006 tok/s ≈ 基线 2023**;finetuned draft 训坏(lr 过高,§四主线B)待降 lr 重训 |
 | **EAGLE-3 @DSpark** | 12B dense | ✅（DeepSpec） | ❌（arch 未注册,B7；待测新版 vLLM） | 有（`deepseek/eagle3_gemma4_12b_ttt7`） · **没测**（load 不了） | 🟡 **ttt7 / ttt5 训练中** | 之前 eval 差=**用错数据 cache**,已修正重训;待训完 eval + vLLM load |
 | **EAGLE-3 @DSpark** | 26B-A4B MoE | ❌ `assert not enable_moe_block`（同 DSpark MoE） | ❌ | 无 | ❌ | 🛠 **待开发**：拆 assert + 对齐 MoE target hidden（§五路径a） |
 | **EAGLE-3 @spec** | 26B-A4B MoE | ✅（speculators） | 🟡 待测 | 有（`RedHatAI/…speculator.eagle3`） · **931 tok/s（负优化,<1766 baseline）** | ⏳ **hidden_states 周一(07-13)生成完 → 再接着训练** | hidden_states 07-10 修好,生成中 |
@@ -45,8 +45,15 @@ commit 署名：`Xinyi Zou <xinyizou@microsoft.com>` + `Assisted-by: Claude (Her
 
 **三条核心结论**：
 1. **自训是必须的** —— 官方 EAGLE-3 draft 在 26B MoE 上 net-negative（931 tok/s / accept 9.75%,比不开 spec 还慢）。
-2. **DSpark 方法 work,且"从 pretrain 微调"最优** —— 12B dense 上 **from-pretrain 微调 > from-scratch > zero-shot**（accept 明显更优）。→ 后续统一走"pretrain 起步微调"路线（更省、收敛更快、效果更好）。
+2. **DSpark 方法 work,warm-start finetune 端到端已验证** —— 12B **from-pretrain 微调每层都超 zero-shot**,困难 free-form 层提升最大（commercial **+1.56** / temporal **+1.28** accept_len）,seasonality 已饱和。**finetune 优势在 maiprofile 分布才显现**（sc1 通用集上 zero-shot dspark ≈ mtp,符合预期）。→ 确立"从 pretrain 起步微调"路线。
 3. **MoE 是分水岭** —— DSpark/DeepSpec-EAGLE3 写死 dense；只有 **MTP** 和 **speculators-EAGLE3** 能直接在 MoE 上训 → 最终目标靠这两条,或给 DSpark 加 MoE 支持。
+
+> **⚙️ vLLM patch（2026-07-16,新 vLLM 跑 gemma4 benchmark 的 5 处修复）** — 代码在 **`workspace/vllm` @ `dev/gemma4_patch_gb6ff8a2f5`**（已 push `zouxinyi0625-hue/vllm`）,benchmark+结果在 `vllm/benchmarks/gemma4_12b_fp8/`（RESULTS.md 顶部 = bf16 对比,configs/ 有 `12b_dspark_bf16` / `12b_e011_mtp_bf16` / `12b_e011_no_mtp_bf16`）。修复清单:
+> - `vllm/v1/spec_decode/llm_base_proposer.py` — MTP embedding-sharing（26B）
+> - `vllm/model_executor/models/gemma4_dspark.py` — DSpark `.causal` 属性 + draft-quant config（fp8）
+> - `vllm/model_executor/models/gemma4_mtp.py` — MTP `suppress_tokens` CUDA-graph
+> - `benchmarks/.../bench_offline_align.py` — offline dspark 接线
+> 结果:26B MTP 修好（embedding-sharing）CUDA graph **2006 tok/s ≈ 基线 2023**;DSpark 在 vLLM 跑通,per-layer 与 DSpark eval 对得上。
 
 ---
 
@@ -90,8 +97,7 @@ accept **9.75%**、accept_len **1.49**、pos0 31%。**通用 off-the-shelf draft
 
 ### 主线 A — DSpark 集成 + 微调
 1. ✅ **基于 pretrain model 微调 MAI Profile（12B,已跑完）** —— 结果 **微调 > from-scratch > zero-shot**,验证了"从 pretrain 起步"路线。
-2. 🔜 **DSpark 的 vLLM 部署** —— 打通 serve（当前最大系统性卡点,DSpark 系全线"能训不能部署"）。
-   路径:等/跟 PR #47216,或测新版 vLLM,目标先在 12B 出**端到端 tok/s**（对标 12B MTP 1382）。**← 本周剩余硬骨头**
+2. ✅ **DSpark 的 vLLM 部署已打通（2026-07-16,新 vLLM + patch）** —— DSpark 在 vLLM 跑通,per-layer 与 DSpark eval 对得上。端到端结果:**warm-start finetune 每层都超 zero-shot**（commercial +1.56 / temporal +1.28 accept_len,seasonality 饱和）。patch 详情见 §二核心结论下方 vLLM patch 块。
 
 ### 主线 B — MTP 训练 + 部署测试
 3. ✅ **MTP 训练完成**（`gemma4-mtp-trainer`,26B,checkpoint `…/mtp_maiprofile/20260715_014947/step600`）。
@@ -181,6 +187,7 @@ tok/s 以 serve 实测为准,**不用 accept rate 冒充加速比**(draft 质量
 | 2026-07-10 | **三线状态更新**:DSpark 12B 训练有明显增益(主力);MTP 探索(无 finetune 先例、缺 TTT);**speculators-EAGLE3 复活**(prefix-caching bug 修好,周一训完);DSpark-EAGLE3 loss 降但 eval 差。**认知修正**:speculators-EAGLE3 与 MTP 能直接在 MoE 上训,三线并进。 |
 | 2026-07-13 | **两主线推进**:① **DSpark 12B from-pretrain 微调跑完** → 结果 **微调 > from-scratch > zero-shot**,确立"从 pretrain 起步微调"路线(核心结论 2)。② **MTP 训练已跑起来**(`gemma4-mtp-trainer` 实训中)。DSpark vLLM 部署 + MTP 部署测试为本周剩余重点。 |
 | 2026-07-15 | **MTP 26B finetuned 部署测试 → 结果异常**:step600 checkpoint 逐层 accept 崩到 3-9% / accept_len ~1.2(seasonality 99%→3.3%),比官方 EAGLE-3 负优化还差、接近随机。判断为 bug(checkpoint 加载/结构/权重)而非训练质量,已记 §四主线B 待排查。下一步先用 stock assistant 跑同 harness 做健全性校验。 |
+| 2026-07-16 | **DSpark vLLM 部署打通 + finetune 端到端验证(重大突破)**:新 vLLM + 5 处 patch（`workspace/vllm@dev/gemma4_patch_gb6ff8a2f5`）让 gemma4 benchmark 跑通。① DSpark 在 vLLM 跑通,per-layer 与 DSpark eval 对得上;**warm-start finetune 每层都超 zero-shot**（commercial +1.56 / temporal +1.28 accept_len,seasonality 饱和;finetune 优势在 maiprofile 分布才显现,sc1 上 zero-shot≈mtp）。② 26B MTP embedding-sharing bug 修好,CUDA graph 2006 tok/s ≈ 基线 2023。patch 清单见 §二 vLLM patch 块。MTP finetuned 训坏(lr 过高)仍待降 lr 重训。 |
 
 ---
 
