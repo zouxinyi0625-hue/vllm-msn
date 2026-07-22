@@ -85,12 +85,19 @@ echo "  assistant    : ${GEMMA4_ASSISTANT_MODEL_PATH:-<from config>}"
 echo ""
 
 # ---- Step 1: convert eval datasets -> sc1 per-layer prompt files ----
+# SKIP_CONVERT=1 uses whatever sc1_maiprofile_*.jsonl already exist in
+# PROMPTS_DIR (e.g. produced by convert_new_eval_to_sc1.py for the new data)
+# instead of regenerating them from the DSpark eval.
 echo "===== Step 1/4: convert eval datasets to benchmark format ====="
-CONV_ARGS=(--output-dir "$PROMPTS_DIR" --layers "$LAYERS")
-if [[ -n "$EVAL_DIR" ]]; then
-  CONV_ARGS+=(--input-dir "$EVAL_DIR")
+if [[ "${SKIP_CONVERT:-0}" == "1" ]]; then
+  echo "  SKIP_CONVERT=1 -> using existing prompts in $PROMPTS_DIR"
+else
+  CONV_ARGS=(--output-dir "$PROMPTS_DIR" --layers "$LAYERS")
+  if [[ -n "$EVAL_DIR" ]]; then
+    CONV_ARGS+=(--input-dir "$EVAL_DIR")
+  fi
+  python3 convert_maiprofile_eval_to_sc1.py "${CONV_ARGS[@]}"
 fi
-python3 convert_maiprofile_eval_to_sc1.py "${CONV_ARGS[@]}"
 echo ""
 
 mapfile -t LAYER_FILES < <(ls "$PROMPTS_DIR"/sc1_maiprofile_*.jsonl 2>/dev/null | grep -v '_all\.jsonl$' || true)
@@ -102,16 +109,41 @@ fi
 # ---- Step 2: start the vLLM server ONCE ----
 echo "===== Step 2/4: start vLLM server (loads the config's model(s) once) ====="
 mkdir -p "$SERVER_LOG_DIR" "$OUTPUT_DIR"
+
+# Pre-clean: kill any stale vLLM/serve_align holding the GPU or port 8100 from a
+# previous run. A leftover server would OOM this one (or squat the port), which
+# shows up downstream as "ConnectionRefused" when the bench client can't reach it.
+echo "  pre-clean: killing any stale vllm serve / serve_align ..."
+pkill -9 -f "vllm serve" 2>/dev/null || true
+pkill -9 -f "serve_align.sh" 2>/dev/null || true
+# also free the port if something still holds it
+if command -v fuser >/dev/null 2>&1; then fuser -k "${PORT}/tcp" 2>/dev/null || true; fi
+sleep 5
+
 SERVER_LOG="${SERVER_LOG_DIR}/$(basename "$CONFIG" .json)_maiprofile_server_$(date +%Y%m%d_%H%M%S).log"
-bash serve_align.sh "$CONFIG" "$PORT" >"$SERVER_LOG" 2>&1 &
+# setsid: run serve in its OWN process group so we can kill the WHOLE tree
+# (bash wrapper + vllm children). Killing just the bash PID leaves vllm orphaned
+# and holding GPU memory — the root cause of a failed second run.
+setsid bash serve_align.sh "$CONFIG" "$PORT" >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
-echo "  server PID: $SERVER_PID   log: $SERVER_LOG"
+SERVER_PGID="$(ps -o pgid= -p "$SERVER_PID" 2>/dev/null | tr -d ' ')"
+echo "  server PID: $SERVER_PID  PGID: ${SERVER_PGID:-?}  log: $SERVER_LOG"
 
 cleanup() {
   echo ""
-  echo "Stopping server PID=$SERVER_PID"
-  kill "$SERVER_PID" 2>/dev/null || true
+  echo "Stopping server (PID=$SERVER_PID PGID=${SERVER_PGID:-?})"
+  # Kill the whole process group (bash wrapper + vllm workers).
+  if [[ -n "${SERVER_PGID:-}" ]]; then
+    kill -TERM "-${SERVER_PGID}" 2>/dev/null || true
+    sleep 5
+    kill -KILL "-${SERVER_PGID}" 2>/dev/null || true
+  fi
+  kill -9 "$SERVER_PID" 2>/dev/null || true
+  # Belt-and-suspenders: sweep any vllm still bound to this model/port.
+  pkill -9 -f "vllm serve" 2>/dev/null || true
+  if command -v fuser >/dev/null 2>&1; then fuser -k "${PORT}/tcp" 2>/dev/null || true; fi
   wait "$SERVER_PID" 2>/dev/null || true
+  sleep 3   # let the GPU free before any next invocation
 }
 trap cleanup EXIT
 
