@@ -69,8 +69,8 @@ fi
 if [[ -n "${GEMMA4_ASSISTANT_MODEL_PATH:-}" ]]; then
   export GEMMA4_ASSISTANT_MODEL_PATH
 fi
-# TP size for the served model. 26B-A4B MoE needs tp>=2; 12B dense fits on tp=1.
-# Passed through to serve_align.sh.
+# TP size for the served model. Default tp=1; override if the target needs
+# sharding across GPUs on your node.
 export TP_SIZE="${TP_SIZE:-1}"
 
 echo "============================================="
