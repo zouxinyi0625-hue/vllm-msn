@@ -17,7 +17,7 @@
   "quantization": "fp8",
   "kv_cache_dtype": "auto",
   "enforce_eager": true,
-  "spec_tokens": 5,
+  "spec_tokens": 1,
   "async_scheduling": true,
   "enable_prefix_caching": true,
   "env": {
