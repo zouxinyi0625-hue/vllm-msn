@@ -1,0 +1,30 @@
+{
+  "name": "26b_a4b_dspark_hf",
+  "description": "Gemma4 26B A4B benchmark config using HF target + DSpark draft (makora-ai). Mirrors LLM(speculative_config={model,num_speculative_tokens}) usage.",
+  "model": "google/gemma-4-26B-A4B-it",
+  "spec_method": "dspark",
+  "speculator_model": "makora-ai/gemma4-26b-a4b-dspark",
+  "assistant_model": "",
+  "served_model_name": "gemma4-26b-a4b-it",
+  "tokenizer": "google/gemma-4-26B-A4B-it",
+  "dataset_path": "../gemma4_moe_fp8/datasets/sc1_delta_v2.jsonl",
+  "num_prompts": 1000,
+  "max_tokens": 512,
+  "temperature": 1.0,
+  "top_p": 0.95,
+  "max_model_len": 8192,
+  "max_num_seqs": 128,
+  "max_num_batched_tokens": 16384,
+  "gpu_memory_utilization": 0.9,
+  "quantization": null,
+  "kv_cache_dtype": "auto",
+  "enforce_eager": false,
+  "spec_tokens": 6,
+  "async_scheduling": true,
+  "enable_prefix_caching": true,
+  "env": {
+    "VLLM_USE_FLASHINFER_MOE_FP8": "0",
+    "VLLM_USE_FLASHINFER_SAMPLER": "0",
+    "VLLM_MOE_USE_DEEP_GEMM": "0"
+  }
+}

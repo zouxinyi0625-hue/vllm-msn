@@ -44,23 +44,15 @@ def apply_env(cfg: dict[str, Any]) -> None:
 def override_model_paths(cfg: dict[str, Any]) -> None:
     """Allow server/GPU nodes to override local model paths without editing JSON.
 
-    Generic variables are preferred for new 12B/26B configs:
+    Generic variables (apply to both 12B and 26B configs):
       - GEMMA4_MODEL_PATH
       - GEMMA4_ASSISTANT_MODEL_PATH
-
-    Legacy 26B-specific variables are still supported for old alignment commands:
-      - GEMMA4_26B_TEXT_ONLY_MODEL_PATH
-      - GEMMA4_26B_ASSISTANT_MODEL_PATH
     """
     if os.environ.get("GEMMA4_MODEL_PATH"):
         cfg["model"] = os.environ["GEMMA4_MODEL_PATH"]
-    elif os.environ.get("GEMMA4_26B_TEXT_ONLY_MODEL_PATH"):
-        cfg["model"] = os.environ["GEMMA4_26B_TEXT_ONLY_MODEL_PATH"]
 
     if os.environ.get("GEMMA4_ASSISTANT_MODEL_PATH"):
         cfg["assistant_model"] = os.environ["GEMMA4_ASSISTANT_MODEL_PATH"]
-    elif os.environ.get("GEMMA4_26B_ASSISTANT_MODEL_PATH"):
-        cfg["assistant_model"] = os.environ["GEMMA4_26B_ASSISTANT_MODEL_PATH"]
 
     # EAGLE-3 (and other --speculative-config methods) use a self-contained
     # speculator model, overridable without editing JSON.
@@ -141,17 +133,17 @@ def build_llm_kwargs(cfg: dict[str, Any]) -> dict[str, Any]:
     assistant_model = cfg.get("assistant_model")
     speculator_model = cfg.get("speculator_model")
     if spec_tokens > 0:
-        if spec_method == "eagle3":
-            # EAGLE-3 uses a self-contained speculator via speculative_config,
-            # mirroring the serve --speculative-config JSON path.
+        if spec_method in {"eagle3", "dspark"}:
+            # EAGLE-3 / DSpark use a self-contained speculator via
+            # ``speculative_config`` (same wiring as serve_align.sh).
             if not speculator_model:
                 raise ValueError(
-                    "spec_method=eagle3 requires 'speculator_model' (empty)"
+                    "spec_method in {eagle3, dspark} requires non-empty speculator_model"
                 )
             kwargs["speculative_config"] = {
                 "model": speculator_model,
                 "num_speculative_tokens": spec_tokens,
-                "method": "eagle3",
+                "method": spec_method,
             }
         else:
             # Default: MTP assistant draft via spec_model / spec_tokens.
@@ -159,6 +151,7 @@ def build_llm_kwargs(cfg: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("spec_tokens > 0 but assistant_model is empty")
             kwargs["spec_model"] = assistant_model
             kwargs["spec_tokens"] = spec_tokens
+
     return kwargs
 
 
