@@ -132,11 +132,18 @@ def build_llm_kwargs(cfg: dict[str, Any]) -> dict[str, Any]:
         kwargs["enable_chunked_prefill"] = cfg["enable_chunked_prefill"]
     if "async_scheduling" in cfg:
         kwargs["async_scheduling"] = cfg["async_scheduling"]
+    if cfg.get("moe_backend"):
+        kwargs["moe_backend"] = cfg["moe_backend"]
+    if "optimization_level" in cfg:
+        kwargs["optimization_level"] = cfg["optimization_level"]
+    if cfg.get("performance_mode"):
+        kwargs["performance_mode"] = cfg["performance_mode"]
 
     spec_tokens = int(cfg.get("spec_tokens", 0) or 0)
-    spec_method = cfg.get("spec_method")
+    spec_method = cfg.get("spec_method") or cfg.get("speculative_method")
     assistant_model = cfg.get("assistant_model")
     speculator_model = cfg.get("speculator_model")
+
     if spec_tokens > 0:
         if spec_method in {"eagle3", "dspark"}:
             # EAGLE-3 / DSpark use a self-contained speculator via
