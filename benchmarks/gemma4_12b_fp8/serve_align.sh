@@ -37,21 +37,24 @@ QUANTIZATION=$(read_json quantization)
 KV_CACHE_DTYPE=$(read_json kv_cache_dtype)
 SPEC_TOKENS=$(read_json spec_tokens)
 SPEC_METHOD=$(read_json spec_method)
+if [[ -z "$SPEC_METHOD" ]]; then
+  SPEC_METHOD=$(read_json speculative_method)
+fi
 SPECULATOR_MODEL=$(read_json speculator_model)
 ASYNC_SCHED=$(read_json async_scheduling)
 ENABLE_PREFIX_CACHING=$(read_json enable_prefix_caching)
+MOE_BACKEND=$(read_json moe_backend)
+OPTIMIZATION_LEVEL=$(read_json optimization_level)
+PERFORMANCE_MODE=$(read_json performance_mode)
 
 # Environment vars must be set before vLLM starts.
 export VLLM_USE_FLASHINFER_MOE_FP8=${VLLM_USE_FLASHINFER_MOE_FP8:-$(read_json env.VLLM_USE_FLASHINFER_MOE_FP8)}
 export VLLM_USE_FLASHINFER_SAMPLER=${VLLM_USE_FLASHINFER_SAMPLER:-$(read_json env.VLLM_USE_FLASHINFER_SAMPLER)}
 export VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM:-$(read_json env.VLLM_MOE_USE_DEEP_GEMM)}
 
-# Local/server overrides without editing JSON. Generic variables are preferred;
-# 26B-specific variables are kept for backward compatibility with the alignment run.
+# Local/server overrides without editing JSON.
 if [[ -n "${GEMMA4_MODEL_PATH:-}" ]]; then
   MODEL="$GEMMA4_MODEL_PATH"
-elif [[ -n "${GEMMA4_26B_TEXT_ONLY_MODEL_PATH:-}" ]]; then
-  MODEL="$GEMMA4_26B_TEXT_ONLY_MODEL_PATH"
 elif [[ -n "${_ModelDataPath_:-}" && -d "${_ModelDataPath_}/model" ]]; then
   MODEL="${_ModelDataPath_}/model"
 elif [[ -n "${_ModelDataPath_:-}" && -d "${_ModelDataPath_}/text_only" ]]; then
@@ -60,8 +63,6 @@ fi
 
 if [[ -n "${GEMMA4_ASSISTANT_MODEL_PATH:-}" ]]; then
   ASSISTANT="$GEMMA4_ASSISTANT_MODEL_PATH"
-elif [[ -n "${GEMMA4_26B_ASSISTANT_MODEL_PATH:-}" ]]; then
-  ASSISTANT="$GEMMA4_26B_ASSISTANT_MODEL_PATH"
 elif [[ -n "${_ModelDataPath_:-}" && -d "${_ModelDataPath_}/assistant" ]]; then
   ASSISTANT="${_ModelDataPath_}/assistant"
 fi
@@ -88,12 +89,22 @@ if [[ -n "$KV_CACHE_DTYPE" && "$KV_CACHE_DTYPE" != "auto" ]]; then
 else
   ARGS+=(--kv-cache-dtype auto)
 fi
+if [[ -n "$MOE_BACKEND" ]]; then
+  ARGS+=(--moe-backend "$MOE_BACKEND")
+fi
+if [[ -n "$OPTIMIZATION_LEVEL" ]]; then
+  ARGS+=(--optimization-level "$OPTIMIZATION_LEVEL")
+fi
+if [[ -n "$PERFORMANCE_MODE" ]]; then
+  ARGS+=(--performance-mode "$PERFORMANCE_MODE")
+fi
 if [[ "$ASYNC_SCHED" == "True" || "$ASYNC_SCHED" == "true" ]]; then
   ARGS+=(--async-scheduling)
 fi
 if [[ "$ENABLE_PREFIX_CACHING" == "False" || "$ENABLE_PREFIX_CACHING" == "false" ]]; then
   ARGS+=(--no-enable-prefix-caching)
 fi
+
 if [[ -n "${GEMMA4_SPECULATOR_MODEL:-}" ]]; then
   SPECULATOR_MODEL="$GEMMA4_SPECULATOR_MODEL"
 fi
@@ -133,6 +144,9 @@ echo "Spec tokens  : ${SPEC_TOKENS:-0}"
 echo "Max seqs     : $MAX_NUM_SEQS"
 echo "Max batched  : $MAX_BATCHED_TOKENS"
 echo "GPU util     : $GPU_UTIL"
+echo "MoE backend  : ${MOE_BACKEND:-auto}"
+echo "Opt level    : ${OPTIMIZATION_LEVEL:-default}"
+echo "Perf mode    : ${PERFORMANCE_MODE:-balanced}"
 echo "Env          : VLLM_USE_FLASHINFER_MOE_FP8=$VLLM_USE_FLASHINFER_MOE_FP8 VLLM_USE_FLASHINFER_SAMPLER=$VLLM_USE_FLASHINFER_SAMPLER VLLM_MOE_USE_DEEP_GEMM=$VLLM_MOE_USE_DEEP_GEMM"
 echo "Command      : ${ARGS[*]}"
 echo ""
