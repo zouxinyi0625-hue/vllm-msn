@@ -38,11 +38,14 @@ else
   base_dir="${_ModelDataPath_}"
 fi
 
-model="${GEMMA4_TEXT_ONLY_MODEL_PATH:-${base_dir}/text_only}"
+model="${GEMMA4_MODEL_PATH:-${GEMMA4_TEXT_ONLY_MODEL_PATH:-${base_dir}/text_only}}"
 spec_model="${GEMMA4_ASSISTANT_MODEL_PATH:-${base_dir}/${DRAFT_MODEL_SUBDIR}}"
 
-# Fallback to HuggingFace if local paths don't exist
-[[ ! -d "$model" ]] && model="google/gemma-4-26B-A4B-it"
+# Fallback to HuggingFace text-only if local paths don't exist
+if [[ ! -d "$model" ]]; then
+  echo "WARN: model path not found ($model), falling back to HF text-only ID" >&2
+  model="google/gemma-4-26B-A4B-it-text-only"
+fi
 [[ ! -d "$spec_model" ]] && spec_model=""
 
 # --- 3. Environment ---
