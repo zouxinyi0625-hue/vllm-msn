@@ -47,12 +47,17 @@ def override_model_paths(cfg: dict[str, Any]) -> None:
     Generic variables (apply to both 12B and 26B configs):
       - GEMMA4_MODEL_PATH
       - GEMMA4_ASSISTANT_MODEL_PATH
+      - GEMMA4_TOKENIZER
     """
+
     if os.environ.get("GEMMA4_MODEL_PATH"):
         cfg["model"] = os.environ["GEMMA4_MODEL_PATH"]
 
     if os.environ.get("GEMMA4_ASSISTANT_MODEL_PATH"):
         cfg["assistant_model"] = os.environ["GEMMA4_ASSISTANT_MODEL_PATH"]
+
+    if os.environ.get("GEMMA4_TOKENIZER"):
+        cfg["tokenizer"] = os.environ["GEMMA4_TOKENIZER"]
 
     # EAGLE-3 (and other --speculative-config methods) use a self-contained
     # speculator model, overridable without editing JSON.
